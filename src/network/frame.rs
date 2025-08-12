@@ -21,6 +21,16 @@ impl Frame {
   }
 }
 
+impl Frame {
+  pub fn to_bytes(&self) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend(self.dst_mac.as_bytes());
+    bytes.extend(self.src_mac.as_bytes());
+    bytes.extend(self.data.clone());
+    bytes
+  }
+}
+
 impl fmt::Display for Frame {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let mut data_str = String::new();
