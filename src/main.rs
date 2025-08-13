@@ -2,6 +2,7 @@ use std::env;
 use std::process;
 
 use blair_switch::network::interface::Interface;
+use blair_switch::Switch;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -9,11 +10,6 @@ fn main() {
       eprintln!("Usage: blair_switch {{int_name}} {{int_name2}}");
       process::exit(1);
     }
-
-    let mut interf = Interface::open(&args[1]);
-    let mut interf2 = Interface::open(&args[2]);
-    loop {
-      let mut frame = interf.receive();
-      interf2.send(&frame);
-    }
+    let mut switch = Switch::build(&args[1..]);
+    switch.start()
 }
