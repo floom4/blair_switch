@@ -5,6 +5,7 @@ use macaddr::MacAddr6;
 pub struct Frame {
   src_mac: MacAddr6,
   dst_mac: MacAddr6,
+  ether_type: u16,
   data: Vec<u8>,
 }
 
@@ -15,9 +16,10 @@ impl Frame {
     }
     let dst_mac = MacAddr6::new(bytes[0],bytes[1],bytes[2],bytes[3], bytes[4], bytes[5]);
     let src_mac = MacAddr6::new(bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11]);
-    let data = bytes[12..].to_vec();
+    let ether_type = ((bytes[12] as u16) << 8) | bytes[13] as u16;
+    let data = bytes[14..].to_vec();
 
-    Frame{dst_mac: dst_mac, src_mac: src_mac, data: data}
+    Frame{dst_mac: dst_mac, src_mac: src_mac, ether_type: ether_type, data: data}
   }
 }
 
@@ -29,6 +31,15 @@ impl Frame {
     bytes.extend(self.data.clone());
     bytes
   }
+
+  pub fn get_eth_type(&self) -> &str {
+    match self.ether_type {
+      0x0800 => "IPv4",
+      0x0806 => "ARP",
+      0x86dd => "IPv6",
+      _ => "UNKNOWN",
+    }
+  }
 }
 
 impl fmt::Display for Frame {
@@ -37,7 +48,7 @@ impl fmt::Display for Frame {
     for byte in &self.data {
       data_str += &format!("{:X}", &byte);
     }
-    write!(f, "Src MAC: {}, Dest MAC: {}, Data: {}", self.src_mac, self.dst_mac, data_str)
+    write!(f, "Src MAC: {}, Dest MAC: {}, EthType: {}, Data: {}", self.src_mac, self.dst_mac, self.get_eth_type(), data_str)
   }
 }
 
