@@ -10,14 +10,14 @@ pub struct Frame {
 }
 
 impl Frame {
-  pub fn build(bytes: &[u8]) -> Frame {
-    if bytes.len() < 13 {
+  pub fn build(bytes: &[u8], size: usize) -> Frame {
+    if size < 13 {
       panic!("Array too small to contain valid frame")
     }
     let dst_mac = MacAddr6::new(bytes[0],bytes[1],bytes[2],bytes[3], bytes[4], bytes[5]);
     let src_mac = MacAddr6::new(bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11]);
     let ether_type = ((bytes[12] as u16) << 8) | bytes[13] as u16;
-    let data = bytes[14..].to_vec();
+    let data = bytes[14..size].to_vec();
 
     Frame{dst_mac: dst_mac, src_mac: src_mac, ether_type: ether_type, data: data}
   }

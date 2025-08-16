@@ -10,14 +10,14 @@ impl Switch {
   pub fn build(interfaces_name: &[String]) -> Switch {
     let mut switch = Switch{interfaces: Vec::new()};
     for name in interfaces_name {
-      switch.interfaces.push(Interface::open(name));
+      switch.interfaces.push(Interface::open(name).unwrap());
     }
     switch
   }
 
   pub fn start(&mut self) {
     loop {
-      let mut frame = self.interfaces[0].receive();
+      let mut frame = self.interfaces[0].receive().unwrap();
       self.interfaces[1].send(&frame);
     }
   }
