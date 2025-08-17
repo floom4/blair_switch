@@ -1,3 +1,5 @@
+use std::thread;
+
 use network::interface::Interface;
 
 pub mod network;
@@ -16,9 +18,22 @@ impl Switch {
   }
 
   pub fn start(&mut self) {
+    thread::scope(|scope| {
+      let egress_interfaces = &self.interfaces;
+      for ingress_interface in &self.interfaces {
+        let h = scope.spawn(move || {
+          loop {
+            let frame = ingress_interface.receive().unwrap();
+            for egress_interface in egress_interfaces {
+              if *egress_interface != *ingress_interface {
+                egress_interface.send(&frame).unwrap();
+              }
+            }
+          }
+        });
+      }
+    });
     loop {
-      let mut frame = self.interfaces[0].receive().unwrap();
-      self.interfaces[1].send(&frame);
     }
   }
 }

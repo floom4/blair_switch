@@ -1,4 +1,3 @@
-use std::sync::OnceLock;
 use std::{io, mem};
 use std::ffi::CString;
 use libc::{
@@ -54,6 +53,7 @@ impl Interface {
     }
     let frame = Frame::build(&buf, n as usize);
     println!("Received frame: intf: {}, {}", self.name, frame);
+    //self.in_counter += 1;
     Ok(frame)
   }
 
@@ -63,7 +63,7 @@ impl Interface {
     if sent != data.len() as isize {
       return Err(io::Error::last_os_error());
     }
-    println!("Packet sent to {}", self.name);
+    println!("Data sent to {}", self.name);
     Ok(())
   }
 }

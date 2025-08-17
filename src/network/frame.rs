@@ -28,6 +28,8 @@ impl Frame {
     let mut bytes = Vec::new();
     bytes.extend(self.dst_mac.as_bytes());
     bytes.extend(self.src_mac.as_bytes());
+    bytes.push((self.ether_type >> 8) as u8);
+    bytes.push(self.ether_type as u8);
     bytes.extend(self.data.clone());
     bytes
   }
