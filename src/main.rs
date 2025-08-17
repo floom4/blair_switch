@@ -1,7 +1,6 @@
 use std::env;
 use std::process;
 
-use blair_switch::network::interface::Interface;
 use blair_switch::Switch;
 
 fn main() {

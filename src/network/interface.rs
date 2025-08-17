@@ -1,4 +1,6 @@
 use std::{io, mem};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+
 use std::ffi::CString;
 use libc::{
   close,
@@ -18,7 +20,7 @@ use super::frame::Frame;
 
 pub struct Interface {
   name: String,
-  fd: i32,
+  fd: OwnedFd,
   in_counter: u32,
   out_counter: u32,
 }
@@ -42,12 +44,13 @@ impl Interface {
           return Err(e);
       }
     }
-    Ok(Interface{name: name.to_string(), fd: fd, in_counter: 0, out_counter: 0})
+    Ok(Interface{name: name.to_string(), fd: unsafe { OwnedFd::from_raw_fd(fd) }, in_counter: 0, out_counter: 0})
   }
 
   pub fn receive(&self) -> io::Result<Frame> {
+    // TODO handle frame bigger than buffer
     let mut buf = vec![0; 4096];
-    let n = unsafe { recv(self.fd, buf.as_mut_ptr() as *mut _, buf.len(), 0) };
+    let n = unsafe { recv(self.fd.as_raw_fd(), buf.as_mut_ptr() as *mut _, buf.len(), 0) };
     if n <= 0 {
       return Err(io::Error::last_os_error());
     }
@@ -59,7 +62,7 @@ impl Interface {
 
   pub fn send(&self, frame: &Frame) -> io::Result<()> {
     let data = frame.to_bytes();
-    let sent = unsafe { send(self.fd, data.as_ptr() as *const _, data.len() as usize, 0) };
+    let sent = unsafe { send(self.fd.as_raw_fd(), data.as_ptr() as *const _, data.len() as usize, 0) };
     if sent != data.len() as isize {
       return Err(io::Error::last_os_error());
     }
@@ -79,12 +82,10 @@ impl PartialEq for Interface {
 }
 
 fn get_if_index(if_name: &str) -> io::Result<u32> {
-  unsafe {
     let c_name = CString::new(if_name).unwrap();
-    let index = if_nametoindex(c_name.as_ptr());
+    let index = unsafe { if_nametoindex(c_name.as_ptr()) };
     if index == 0 {
       return Err(io::Error::last_os_error());
     }
     Ok(index)
-  }
 }

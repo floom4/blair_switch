@@ -21,7 +21,7 @@ impl Switch {
     thread::scope(|scope| {
       let egress_interfaces = &self.interfaces;
       for ingress_interface in &self.interfaces {
-        let h = scope.spawn(move || {
+        let _ = scope.spawn(move || {
           loop {
             let frame = ingress_interface.receive().unwrap();
             for egress_interface in egress_interfaces {
