@@ -1,6 +1,6 @@
 use std::{fmt, io, mem};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use std::ffi::CString;
 use libc::{
@@ -21,17 +21,18 @@ use super::frame::Frame;
 
 pub struct Interface {
   name: String,
+  if_index: u32,
   fd: OwnedFd,
   in_pkts: AtomicU64,
   out_pkts: AtomicU64,
   in_bytes: AtomicU64,
   out_bytes: AtomicU64,
+  debug_mode: AtomicBool,
 }
 
 impl Interface {
   pub fn open(name: &str) -> io::Result<Interface> {
     let if_index = get_if_index(name).unwrap();
-    println!("IF index: {if_index}");
     let fd = unsafe { socket(AF_PACKET, SOCK_RAW, ETH_P_ALL.to_be()) };
     if fd < 0 {
       return Err(io::Error::last_os_error());
@@ -47,9 +48,10 @@ impl Interface {
           return Err(e);
       }
     }
-    Ok(Interface{name: name.to_string(), fd: unsafe { OwnedFd::from_raw_fd(fd) },
+    Ok(Interface{name: name.to_string(), if_index: if_index, fd: unsafe { OwnedFd::from_raw_fd(fd) },
       in_pkts: AtomicU64::new(0), out_pkts: AtomicU64::new(0),
-      in_bytes: AtomicU64::new(0), out_bytes: AtomicU64::new(0)})
+      in_bytes: AtomicU64::new(0), out_bytes: AtomicU64::new(0),
+      debug_mode: AtomicBool::new(false)})
   }
 
   pub fn receive(&self) -> io::Result<Frame> {
@@ -62,9 +64,9 @@ impl Interface {
     let frame = Frame::build(&buf, n as usize);
     self.in_pkts.fetch_add(1, Ordering::Relaxed);
     self.in_bytes.fetch_add(n as u64, Ordering::Relaxed);
-    println!("Received frame: intf: {}(ptks {}, bytes {}), {}", self.name,
-      self.in_pkts.load(Ordering::Relaxed), self.in_bytes.load(Ordering::Relaxed),
-      frame);
+    if self.debug_mode.load(Ordering::Relaxed) {
+      println!("Received frame: intf: {}, {}", self.name, frame);
+    }
     Ok(frame)
   }
 
@@ -76,9 +78,15 @@ impl Interface {
     }
     self.out_pkts.fetch_add(1, Ordering::Relaxed);
     self.out_bytes.fetch_add(sent as u64, Ordering::Relaxed);
-    println!("Data sent to {}(pkts {}, bytes {})", self.name,
-      self.out_pkts.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed));
+    if self.debug_mode.load(Ordering::Relaxed) {
+      println!("Data sent to {}(pkts {}, bytes {})", self.name,
+        self.out_pkts.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed));
+    }
     Ok(())
+  }
+
+  pub fn set_debug_mode(&self, value: bool) {
+    self.debug_mode.store(value, Ordering::Relaxed);
   }
 }
 
@@ -103,9 +111,10 @@ fn get_if_index(if_name: &str) -> io::Result<u32> {
 
 impl fmt::Display for Interface {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{}:\n----------\nFd: {}\nIn Pkts: {} Out Pkts: {}\nIn bytes: {}, Out bytes: {}",
-      self.name, self.fd.as_raw_fd(),
+    write!(f, "{}:\n----------\nIndex: {}\nFd: {}\nIn Pkts: {} Out Pkts: {}\nIn bytes: {}, Out bytes: {}\nDebug Mode: {}",
+      self.name, self.if_index, self.fd.as_raw_fd(),
       self.in_pkts.load(Ordering::Relaxed), self.out_pkts.load(Ordering::Relaxed),
-      self.in_bytes.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed))
+      self.in_bytes.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed),
+      self.debug_mode.load(Ordering::Relaxed))
   }
 }

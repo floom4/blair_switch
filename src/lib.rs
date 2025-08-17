@@ -46,6 +46,20 @@ impl Switch {
                   println!("{}\n", interface);
                 }
               },
+              "debug" => {
+                for interface in &self.interfaces {
+                  interface.set_debug_mode(true);
+                }
+              }
+              "no debug" => {
+                for interface in &self.interfaces {
+                  interface.set_debug_mode(false);
+                }
+              },
+              "config save" => {
+              }
+              "config load" => {
+              }
               default => println!("Line: {:?}", default),
             }
           }
