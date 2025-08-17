@@ -1,4 +1,4 @@
-use std::{io, mem};
+use std::{fmt, io, mem};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -99,4 +99,13 @@ fn get_if_index(if_name: &str) -> io::Result<u32> {
       return Err(io::Error::last_os_error());
     }
     Ok(index)
+}
+
+impl fmt::Display for Interface {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{}:\n----------\nFd: {}\nIn Pkts: {} Out Pkts: {}\nIn bytes: {}, Out bytes: {}",
+      self.name, self.fd.as_raw_fd(),
+      self.in_pkts.load(Ordering::Relaxed), self.out_pkts.load(Ordering::Relaxed),
+      self.in_bytes.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed))
+  }
 }

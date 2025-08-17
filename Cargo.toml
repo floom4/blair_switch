@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 libc = "0.2.0"
 macaddr = "1.0.1"
+rustyline = "17.0.0"
