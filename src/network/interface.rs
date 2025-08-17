@@ -1,5 +1,6 @@
 use std::{io, mem};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use std::ffi::CString;
 use libc::{
@@ -21,8 +22,10 @@ use super::frame::Frame;
 pub struct Interface {
   name: String,
   fd: OwnedFd,
-  in_counter: u32,
-  out_counter: u32,
+  in_pkts: AtomicU64,
+  out_pkts: AtomicU64,
+  in_bytes: AtomicU64,
+  out_bytes: AtomicU64,
 }
 
 impl Interface {
@@ -44,7 +47,9 @@ impl Interface {
           return Err(e);
       }
     }
-    Ok(Interface{name: name.to_string(), fd: unsafe { OwnedFd::from_raw_fd(fd) }, in_counter: 0, out_counter: 0})
+    Ok(Interface{name: name.to_string(), fd: unsafe { OwnedFd::from_raw_fd(fd) },
+      in_pkts: AtomicU64::new(0), out_pkts: AtomicU64::new(0),
+      in_bytes: AtomicU64::new(0), out_bytes: AtomicU64::new(0)})
   }
 
   pub fn receive(&self) -> io::Result<Frame> {
@@ -55,8 +60,11 @@ impl Interface {
       return Err(io::Error::last_os_error());
     }
     let frame = Frame::build(&buf, n as usize);
-    println!("Received frame: intf: {}, {}", self.name, frame);
-    //self.in_counter += 1;
+    self.in_pkts.fetch_add(1, Ordering::Relaxed);
+    self.in_bytes.fetch_add(n as u64, Ordering::Relaxed);
+    println!("Received frame: intf: {}(ptks {}, bytes {}), {}", self.name,
+      self.in_pkts.load(Ordering::Relaxed), self.in_bytes.load(Ordering::Relaxed),
+      frame);
     Ok(frame)
   }
 
@@ -66,7 +74,10 @@ impl Interface {
     if sent != data.len() as isize {
       return Err(io::Error::last_os_error());
     }
-    println!("Data sent to {}", self.name);
+    self.out_pkts.fetch_add(1, Ordering::Relaxed);
+    self.out_bytes.fetch_add(sent as u64, Ordering::Relaxed);
+    println!("Data sent to {}(pkts {}, bytes {})", self.name,
+      self.out_pkts.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed));
     Ok(())
   }
 }
