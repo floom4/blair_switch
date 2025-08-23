@@ -1,10 +1,10 @@
-use std::process;
 use std::thread;
-use rustyline::error::ReadlineError;
 
 use network::interface::Interface;
+use cli::cli_run;
 
 pub mod network;
+pub mod cli;
 
 pub struct Switch {
   interfaces: Vec<Interface>,
@@ -34,40 +34,7 @@ impl Switch {
           }
         });
       }
-      let mut rl = rustyline::DefaultEditor::new().unwrap();
-      loop {
-        let input = rl.readline("blair-switch#");
-        match input {
-          Ok(cmd) => {
-            match &cmd[..] {
-              "show interfaces" => {
-                println!("Interfaces:\n==========\n");
-                for interface in &self.interfaces {
-                  println!("{}\n", interface);
-                }
-              },
-              "debug" => {
-                for interface in &self.interfaces {
-                  interface.set_debug_mode(true);
-                }
-              }
-              "no debug" => {
-                for interface in &self.interfaces {
-                  interface.set_debug_mode(false);
-                }
-              },
-              "config save" => {
-              }
-              "config load" => {
-              }
-              default => println!("Line: {:?}", default),
-            }
-          }
-          Err(ReadlineError::Interrupted) => println!("^C"),
-          Err(ReadlineError::Eof) =>  process::exit(0),
-          Err(_) => println!("No input"),
-        }
-      }
+      cli_run(&self.interfaces);
     });
   }
 }
