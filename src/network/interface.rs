@@ -20,7 +20,7 @@ use libc::{
 use super::frame::Frame;
 
 pub struct Interface {
-  name: String,
+  pub name: String,
   if_index: u32,
   fd: OwnedFd,
   in_pkts: AtomicU64,
@@ -111,7 +111,7 @@ fn get_if_index(if_name: &str) -> io::Result<u32> {
 
 impl fmt::Display for Interface {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{}:\n----------\nIndex: {}\nFd: {}\nIn Pkts: {} Out Pkts: {}\nIn bytes: {}, Out bytes: {}\nDebug Mode: {}",
+    write!(f, "{}\n----------\nIndex: {}\nFd: {}\nIn Pkts: {} Out Pkts: {}\nIn bytes: {}, Out bytes: {}\nDebug Mode: {}",
       self.name, self.if_index, self.fd.as_raw_fd(),
       self.in_pkts.load(Ordering::Relaxed), self.out_pkts.load(Ordering::Relaxed),
       self.in_bytes.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed),
