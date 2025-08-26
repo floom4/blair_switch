@@ -31,6 +31,7 @@ pub fn cli_run(interfaces: &Vec<Interface>) {
       CliMode::General => {
         match input {
           Ok(cmd) => {
+            rl.add_history_entry(&cmd);
             let tokens : Vec<&str> = cmd.split(" ").collect();
             match tokens.as_slice() {
               ["show", "interfaces"] => {
@@ -76,6 +77,7 @@ pub fn cli_run(interfaces: &Vec<Interface>) {
       CliMode::Interface(ref interface) => {
         match input {
           Ok(cmd) => {
+            rl.add_history_entry(&cmd);
             let tokens : Vec<&str> = cmd.split(" ").collect();
             match tokens.as_slice() {
               ["show"] => println!("{}", interface),
