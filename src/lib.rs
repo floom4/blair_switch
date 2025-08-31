@@ -1,4 +1,5 @@
 use std::thread;
+use std::sync::mpsc::channel;
 
 use network::interface::Interface;
 use cli::cli_run;
@@ -14,7 +15,9 @@ impl Switch {
   pub fn build(interfaces_name: &[String]) -> Switch {
     let mut switch = Switch{interfaces: Vec::new()};
     for name in interfaces_name {
-      switch.interfaces.push(Interface::open(name).unwrap());
+      let mut intf = Interface::init(name);
+      intf.open().expect("test");
+      switch.interfaces.push(intf);
     }
     switch
   }
@@ -23,7 +26,7 @@ impl Switch {
     thread::scope(|scope| {
       let egress_interfaces = &self.interfaces;
       for ingress_interface in &self.interfaces {
-        let _ = scope.spawn(move || {
+        let handle = scope.spawn(move || {
           loop {
             let frame = ingress_interface.receive().unwrap();
             for egress_interface in egress_interfaces {
@@ -34,7 +37,7 @@ impl Switch {
           }
         });
       }
-      cli_run(&self.interfaces);
+      cli_run(&self);
     });
   }
 }

@@ -22,7 +22,7 @@ use super::frame::Frame;
 pub struct Interface {
   pub name: String,
   if_index: u32,
-  fd: OwnedFd,
+  fd: Option<OwnedFd>,
   in_pkts: AtomicU64,
   out_pkts: AtomicU64,
   in_bytes: AtomicU64,
@@ -31,8 +31,15 @@ pub struct Interface {
 }
 
 impl Interface {
-  pub fn open(name: &str) -> io::Result<Interface> {
+  pub fn init(name: &str) -> Interface {
     let if_index = get_if_index(name).unwrap();
+    Interface{name: name.to_string(), if_index: if_index, fd: None,
+      in_pkts: AtomicU64::new(0), out_pkts: AtomicU64::new(0),
+      in_bytes: AtomicU64::new(0), out_bytes: AtomicU64::new(0),
+      debug_mode: AtomicBool::new(false)}
+  }
+
+  pub fn open(&mut self) -> io::Result<()> {
     let fd = unsafe { socket(AF_PACKET, SOCK_RAW, ETH_P_ALL.to_be()) };
     if fd < 0 {
       return Err(io::Error::last_os_error());
@@ -40,7 +47,7 @@ impl Interface {
     let mut addr: sockaddr_ll = unsafe { mem::zeroed() };
     addr.sll_family = AF_PACKET as u16;
     addr.sll_protocol = (ETH_P_ALL as u16).to_be();
-    addr.sll_ifindex = if_index as i32;
+    addr.sll_ifindex = self.if_index as i32;
     unsafe {
       if bind(fd, &addr as *const _ as *const sockaddr, mem::size_of::<sockaddr_ll>() as u32) < 0 {
           let e = io::Error::last_os_error();
@@ -48,45 +55,63 @@ impl Interface {
           return Err(e);
       }
     }
-    Ok(Interface{name: name.to_string(), if_index: if_index, fd: unsafe { OwnedFd::from_raw_fd(fd) },
-      in_pkts: AtomicU64::new(0), out_pkts: AtomicU64::new(0),
-      in_bytes: AtomicU64::new(0), out_bytes: AtomicU64::new(0),
-      debug_mode: AtomicBool::new(false)})
+    self.fd = unsafe { Some(OwnedFd::from_raw_fd(fd)) };
+    return Ok(())
+  }
+
+  pub fn close(&mut self) {
+    self.fd = None;
   }
 
   pub fn receive(&self) -> io::Result<Frame> {
     // TODO handle frame bigger than buffer
     let mut buf = vec![0; 4096];
-    let n = unsafe { recv(self.fd.as_raw_fd(), buf.as_mut_ptr() as *mut _, buf.len(), 0) };
-    if n <= 0 {
-      return Err(io::Error::last_os_error());
+    if let Some(fd) = &self.fd {
+      let n = unsafe { recv(fd.as_raw_fd(), buf.as_mut_ptr() as *mut _, buf.len(), 0) };
+      if n <= 0 {
+        return Err(io::Error::last_os_error());
+      }
+      let frame = Frame::build(&buf, n as usize);
+      self.in_pkts.fetch_add(1, Ordering::Relaxed);
+      self.in_bytes.fetch_add(n as u64, Ordering::Relaxed);
+      if self.debug_mode.load(Ordering::Relaxed) {
+        println!("Received frame: intf: {}, {}", self.name, frame);
+      }
+      Ok(frame)
+    } else {
+      Err(io::Error::new(io::ErrorKind::BrokenPipe, "fd closed"))
     }
-    let frame = Frame::build(&buf, n as usize);
-    self.in_pkts.fetch_add(1, Ordering::Relaxed);
-    self.in_bytes.fetch_add(n as u64, Ordering::Relaxed);
-    if self.debug_mode.load(Ordering::Relaxed) {
-      println!("Received frame: intf: {}, {}", self.name, frame);
-    }
-    Ok(frame)
   }
 
   pub fn send(&self, frame: &Frame) -> io::Result<()> {
-    let data = frame.to_bytes();
-    let sent = unsafe { send(self.fd.as_raw_fd(), data.as_ptr() as *const _, data.len() as usize, 0) };
-    if sent != data.len() as isize {
-      return Err(io::Error::last_os_error());
+    if let Some(fd) = &self.fd {
+      let data = frame.to_bytes();
+      let sent = unsafe { send(fd.as_raw_fd(), data.as_ptr() as *const _, data.len() as usize, 0) };
+      if sent != data.len() as isize {
+        return Err(io::Error::last_os_error());
+      }
+      self.out_pkts.fetch_add(1, Ordering::Relaxed);
+      self.out_bytes.fetch_add(sent as u64, Ordering::Relaxed);
+      if self.debug_mode.load(Ordering::Relaxed) {
+        println!("Data sent to {}(pkts {}, bytes {})", self.name,
+          self.out_pkts.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed));
+      }
+      Ok(())
     }
-    self.out_pkts.fetch_add(1, Ordering::Relaxed);
-    self.out_bytes.fetch_add(sent as u64, Ordering::Relaxed);
-    if self.debug_mode.load(Ordering::Relaxed) {
-      println!("Data sent to {}(pkts {}, bytes {})", self.name,
-        self.out_pkts.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed));
+    else {
+      Err(io::Error::new(io::ErrorKind::BrokenPipe, "fd closed"))
     }
-    Ok(())
   }
 
   pub fn set_debug_mode(&self, value: bool) {
     self.debug_mode.store(value, Ordering::Relaxed);
+  }
+
+  pub fn reset_counters(&self) {
+    self.in_pkts.store(0, Ordering::Relaxed);
+    self.out_pkts.store(0, Ordering::Relaxed);
+    self.in_bytes.store(0, Ordering::Relaxed);
+    self.out_bytes.store(0, Ordering::Relaxed);
   }
 }
 
@@ -111,8 +136,10 @@ fn get_if_index(if_name: &str) -> io::Result<u32> {
 
 impl fmt::Display for Interface {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{}\n----------\nIndex: {}\nFd: {}\nIn Pkts: {} Out Pkts: {}\nIn bytes: {}, Out bytes: {}\nDebug Mode: {}",
-      self.name, self.if_index, self.fd.as_raw_fd(),
+    write!(f, "{}\n----------\nStatus: {}\nIndex: {}\nFd: {:?}\nIn Pkts: {} Out Pkts: {}\nIn bytes: {}, Out bytes: {}\nDebug Mode: {}",
+      self.name,
+      if let Some(_) = &self.fd { "running" } else { "shutdown" },
+      self.if_index, self.fd,
       self.in_pkts.load(Ordering::Relaxed), self.out_pkts.load(Ordering::Relaxed),
       self.in_bytes.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed),
       self.debug_mode.load(Ordering::Relaxed))

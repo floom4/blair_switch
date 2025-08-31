@@ -1,6 +1,7 @@
 use std::process;
 use rustyline::error::ReadlineError;
 use super::network::interface::Interface;
+use super::Switch;
 
 enum CliMode<'a> {
   General,
@@ -20,9 +21,10 @@ fn generate_prompt(mode: &CliMode) -> String {
   prompt
 }
 
-pub fn cli_run(interfaces: &Vec<Interface>) {
+pub fn cli_run(switch: &Switch) {
   let mut rl = rustyline::DefaultEditor::new().unwrap();
   let mut mode = CliMode::General;
+  let interfaces = &switch.interfaces;
 
   loop {
     let prompt = generate_prompt(&mode);
@@ -61,6 +63,11 @@ pub fn cli_run(interfaces: &Vec<Interface>) {
                   interface.set_debug_mode(false);
                 }
               },
+              ["counters", "reset"] => {
+                for interface in interfaces {
+                  interface.reset_counters();
+                }
+              }
               ["config", "save"] => {
               },
               ["config", "load"] => {
@@ -83,8 +90,9 @@ pub fn cli_run(interfaces: &Vec<Interface>) {
               ["show"] => println!("{}", interface),
               ["debug"] => interface.set_debug_mode(true), 
               ["no", "debug"] => interface.set_debug_mode(false),
-              ["disable"] => {},
-              ["no", "disable"] => {},
+              ["shutdown"] => {},
+              ["no", "shutdown"] => {},
+              ["counters", "reset"] => {interface.reset_counters()},
               ["exit"] => mode = CliMode::General,
               _ => println!("Unknown command"),
             }
