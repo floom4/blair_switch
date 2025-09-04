@@ -1,11 +1,14 @@
+use std::collections::HashMap;
 use std::process;
+use std::sync::Arc;
+use crossbeam_channel::Sender;
 use rustyline::error::ReadlineError;
-use super::network::interface::Interface;
-use super::Switch;
+use super::network::interface::{InterfaceView, IntfCmd};
+//use super::Switch;
 
-enum CliMode<'a> {
+enum CliMode {
   General,
-  Interface(&'a Interface),
+  Interface(String),
 }
 
 fn generate_prompt(mode: &CliMode) -> String {
@@ -13,7 +16,7 @@ fn generate_prompt(mode: &CliMode) -> String {
   prompt += "blair-switch";
   match *mode {
     CliMode::Interface(ref interface) => {
-      prompt = format!("{}({})", prompt, interface.name);
+      prompt = format!("{}({})", prompt, interface);
     },
     _ => (),
   };
@@ -21,10 +24,9 @@ fn generate_prompt(mode: &CliMode) -> String {
   prompt
 }
 
-pub fn cli_run(switch: &Switch) {
+pub fn cli_run(intfs_view: &HashMap<&str, Arc<InterfaceView>>) {
   let mut rl = rustyline::DefaultEditor::new().unwrap();
   let mut mode = CliMode::General;
-  let interfaces = &switch.interfaces;
 
   loop {
     let prompt = generate_prompt(&mode);
@@ -38,34 +40,30 @@ pub fn cli_run(switch: &Switch) {
             match tokens.as_slice() {
               ["show", "interfaces"] => {
                 println!("Interfaces:\n==========\n");
-                for interface in interfaces {
-                  println!("{}\n", interface);
+                for (_, view) in intfs_view {
+                  println!("{}\n", view);
                 }
               },
               ["interface", intf_name] => {
-                for intf in interfaces {
-                  if intf.name == *intf_name {
-                    mode = CliMode::Interface(intf);
-                    break;
+                  if let Some(_) = intfs_view.get(*intf_name) {
+                    mode = CliMode::Interface(intf_name.to_string());
+                  } else {
+                    println!("Interface {} not found", intf_name);
                   }
-                }
-                if matches!(mode, CliMode::General) {
-                  println!("Interface {} not found", intf_name);
-                }
               },
               ["debug"] => {
-                for interface in interfaces {
-                  interface.set_debug_mode(true);
+                for (_, view) in intfs_view {
+                  view.set_debug_mode(true);
                 }
               },
               ["no", "debug"] => {
-                for interface in interfaces {
-                  interface.set_debug_mode(false);
+                for (_, view) in intfs_view {
+                  view.set_debug_mode(false);
                 }
               },
               ["counters", "reset"] => {
-                for interface in interfaces {
-                  interface.reset_counters();
+                for (_, view) in intfs_view {
+                  view.reset_counters();
                 }
               }
               ["config", "save"] => {
@@ -87,12 +85,12 @@ pub fn cli_run(switch: &Switch) {
             rl.add_history_entry(&cmd);
             let tokens : Vec<&str> = cmd.split(" ").collect();
             match tokens.as_slice() {
-              ["show"] => println!("{}", interface),
-              ["debug"] => interface.set_debug_mode(true), 
-              ["no", "debug"] => interface.set_debug_mode(false),
-              ["shutdown"] => {},
-              ["no", "shutdown"] => {},
-              ["counters", "reset"] => {interface.reset_counters()},
+              ["show"] => println!("{}", intfs_view[&interface[..]]),
+              ["debug"] => intfs_view[&interface[..]].set_debug_mode(true), 
+              ["no", "debug"] => intfs_view[&interface[..]].set_debug_mode(false),
+              ["shutdown"] => {intfs_view[&interface[..]].send_cmd(IntfCmd::Shutdown);},
+              ["no", "shutdown"] => {intfs_view[&interface[..]].send_cmd(IntfCmd::NoShutdown);},
+              ["counters", "reset"] => {intfs_view[&interface[..]].reset_counters()},
               ["exit"] => mode = CliMode::General,
               _ => println!("Unknown command"),
             }
