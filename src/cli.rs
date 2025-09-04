@@ -6,9 +6,9 @@ use rustyline::error::ReadlineError;
 use super::network::interface::{InterfaceView, IntfCmd};
 //use super::Switch;
 
-enum CliMode {
+enum CliMode<'a> {
   General,
-  Interface(String),
+  Interface(Arc<InterfaceView<'a>>),
 }
 
 fn generate_prompt(mode: &CliMode) -> String {
@@ -16,7 +16,7 @@ fn generate_prompt(mode: &CliMode) -> String {
   prompt += "blair-switch";
   match *mode {
     CliMode::Interface(ref interface) => {
-      prompt = format!("{}({})", prompt, interface);
+      prompt = format!("{}({})", prompt, interface.name);
     },
     _ => (),
   };
@@ -24,7 +24,7 @@ fn generate_prompt(mode: &CliMode) -> String {
   prompt
 }
 
-pub fn cli_run(intfs_view: &HashMap<&str, Arc<InterfaceView>>) {
+pub fn cli_run(intfs_view: & HashMap<& str, Arc<InterfaceView>>) {
   let mut rl = rustyline::DefaultEditor::new().unwrap();
   let mut mode = CliMode::General;
 
@@ -45,8 +45,8 @@ pub fn cli_run(intfs_view: &HashMap<&str, Arc<InterfaceView>>) {
                 }
               },
               ["interface", intf_name] => {
-                  if let Some(_) = intfs_view.get(*intf_name) {
-                    mode = CliMode::Interface(intf_name.to_string());
+                  if let Some(intf) = intfs_view.get(*intf_name) {
+                    mode = CliMode::Interface(intf.clone());
                   } else {
                     println!("Interface {} not found", intf_name);
                   }
@@ -79,18 +79,18 @@ pub fn cli_run(intfs_view: &HashMap<&str, Arc<InterfaceView>>) {
           Err(_) => println!("No input"),
         }
       },
-      CliMode::Interface(ref interface) => {
+      CliMode::Interface(ref intf) => {
         match input {
           Ok(cmd) => {
             rl.add_history_entry(&cmd);
             let tokens : Vec<&str> = cmd.split(" ").collect();
             match tokens.as_slice() {
-              ["show"] => println!("{}", intfs_view[&interface[..]]),
-              ["debug"] => intfs_view[&interface[..]].set_debug_mode(true), 
-              ["no", "debug"] => intfs_view[&interface[..]].set_debug_mode(false),
-              ["shutdown"] => {intfs_view[&interface[..]].send_cmd(IntfCmd::Shutdown);},
-              ["no", "shutdown"] => {intfs_view[&interface[..]].send_cmd(IntfCmd::NoShutdown);},
-              ["counters", "reset"] => {intfs_view[&interface[..]].reset_counters()},
+              ["show"] => println!("{}", intf),
+              ["debug"] => intf.set_debug_mode(true), 
+              ["no", "debug"] => intf.set_debug_mode(false),
+              ["shutdown"] => {intf.send_cmd(IntfCmd::Shutdown);},
+              ["no", "shutdown"] => {intf.send_cmd(IntfCmd::NoShutdown);},
+              ["counters", "reset"] => {intf.reset_counters()},
               ["exit"] => mode = CliMode::General,
               _ => println!("Unknown command"),
             }

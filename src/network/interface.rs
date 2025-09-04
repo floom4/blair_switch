@@ -40,7 +40,7 @@ pub struct InterfaceRoData<'a> {
 }
 
 pub struct InterfaceView<'a> {
-  name: String,
+  pub name: String,
   tx: Sender<IntfCmd>,
   in_pkts: AtomicU64,
   out_pkts: AtomicU64,
