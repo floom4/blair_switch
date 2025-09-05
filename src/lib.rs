@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{unbounded, Receiver};
 
 use network::interface::{Interface, InterfaceView, IntfCmd};
+use network::frame::Frame;
 use cli::cli_run;
 
 pub mod network;
@@ -23,7 +24,9 @@ impl Switch<'_> {
     for name in interfaces_name {
       let (tx, rx) = unbounded::<IntfCmd>();
       let mut intf = Interface::init(name, tx);
-      intf.open().expect("test");
+      if let Err(err) = intf.open() {
+        eprintln!("Error: {}", err);
+      }
       switch.intfs_rx.insert(&name, rx);
       switch.intfs_view.insert(&name, Arc::clone(&intf.view));
       switch.interfaces.push(intf);
@@ -33,22 +36,21 @@ impl Switch<'_> {
 
   pub fn start(&mut self) {
     thread::scope(|scope| {
-      let egress_interfaces = &self.intfs_view;
-      let intfs_rx = &self.intfs_rx;
-
       let interfaces = std::mem::take(&mut self.interfaces);
 
-      for mut ingress_interface in interfaces {
-        let rx = intfs_rx[&ingress_interface.name.as_str()].clone();
+      for mut ing_intf in interfaces {
+        let rx = self.intfs_rx[&ing_intf.name.as_str()].clone();
+        let mut egr_intfs = self.intfs_view.clone();
+        egr_intfs.remove(&ing_intf.name[..]);
 
         let handle = scope.spawn( move || {
           loop {
 
             // Control plane
             match rx.try_recv() {
-              Ok(IntfCmd::Shutdown) => ingress_interface.close(),
+              Ok(IntfCmd::Shutdown) => ing_intf.close(),
               Ok(IntfCmd::NoShutdown) => {
-                if let Err(err) = ingress_interface.open() {
+                if let Err(err) = ing_intf.open() {
                   eprintln!("Error: {}", err)
                 }
               },
@@ -57,19 +59,12 @@ impl Switch<'_> {
             }
 
             // Data plane
-            if ingress_interface.is_up() {
-              match ingress_interface.receive() {
+            if ing_intf.is_up() {
+              match ing_intf.receive() {
                 Ok(Some(frame)) => {
-                  // Frame flooding
-                  for (egr_name, egress_interface) in egress_interfaces {
-                    if **egr_name != *ingress_interface.name && egress_interface.is_up() {
-                      if let Err(err) = egress_interface.send(&frame) {
-                        eprintln!("Error: {}", err);
-                      }
-                    }
-                  }
+                  flood(&egr_intfs, &frame);
                 }
-                Ok(None) => (), // no data, timeout
+                Ok(None) => continue, // no data, timeout
                 Err(err) => {
                   eprintln!("Error: {}", err);
                 }
@@ -80,5 +75,16 @@ impl Switch<'_> {
       }
       cli_run(&self.intfs_view);
     });
+  }
+}
+
+// Frame flooding
+pub fn flood(intfs: &HashMap<&str, Arc<InterfaceView>>, frame: &Frame) {
+  for (_, intf) in intfs {
+    if intf.is_up() {
+      if let Err(err) = intf.send(&frame) {
+        eprintln!("Error: {}", err);
+      }
+    }
   }
 }

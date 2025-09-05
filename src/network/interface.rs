@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use arc_swap::ArcSwap;
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Sender;
 
 use libc::{
   close,
@@ -202,7 +202,7 @@ impl InterfaceView<'_> {
 }
 
 fn get_if_index(if_name: &str) -> io::Result<u32> {
-    let c_name = CString::new(if_name).unwrap();
+    let c_name = CString::new(if_name)?;
     let index = unsafe { if_nametoindex(c_name.as_ptr()) };
     if index == 0 {
       return Err(io::Error::last_os_error());

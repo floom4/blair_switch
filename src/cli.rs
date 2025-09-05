@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::process;
 use std::sync::Arc;
-use crossbeam_channel::Sender;
 use rustyline::error::ReadlineError;
 use super::network::interface::{InterfaceView, IntfCmd};
 //use super::Switch;
