@@ -3,8 +3,8 @@ use std::fmt;
 use macaddr::MacAddr6;
 
 pub struct Frame {
-  src_mac: MacAddr6,
-  dst_mac: MacAddr6,
+  pub src_mac: MacAddr6,
+  pub dst_mac: MacAddr6,
   ether_type: u16,
   data: Vec<u8>,
 }
@@ -41,6 +41,10 @@ impl Frame {
       0x86dd => "IPv6",
       _ => "UNKNOWN",
     }
+  }
+
+  pub fn is_broadcast(&self) -> bool {
+    self.dst_mac.is_broadcast()
   }
 }
 

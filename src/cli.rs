@@ -3,7 +3,7 @@ use std::process;
 use std::sync::Arc;
 use rustyline::error::ReadlineError;
 use super::network::interface::{InterfaceView, IntfCmd};
-//use super::Switch;
+use super::fib::Fib;
 
 enum CliMode<'a> {
   General,
@@ -23,7 +23,7 @@ fn generate_prompt(mode: &CliMode) -> String {
   prompt
 }
 
-pub fn cli_run(intfs_view: & HashMap<& str, Arc<InterfaceView>>) {
+pub fn cli_run(intfs_view: & HashMap<& str, Arc<InterfaceView>>, fib: &Arc<Fib>) {
   let mut rl = rustyline::DefaultEditor::new().unwrap();
   let mut mode = CliMode::General;
 
@@ -43,6 +43,9 @@ pub fn cli_run(intfs_view: & HashMap<& str, Arc<InterfaceView>>) {
                   println!("{}\n", view);
                 }
               },
+              ["show", "fib"] => {
+                println!("FIB:\n====\n{}", fib)
+              }
               ["interface", intf_name] => {
                   if let Some(intf) = intfs_view.get(*intf_name) {
                     mode = CliMode::Interface(intf.clone());

@@ -33,12 +33,19 @@ The command line interface has multiple mods:
   - General mod: General configuration of the switch
   - Interface mod: Configuration of the selectet interface
 
+Example:
+```
+blair-switch# // General mode prompt
+blair-switch# interface Port1 // Switching to interface mod on Port1
+blair-switch(Port1)# // Intreface mode prompt
+```
+
 
 Most of the command do have a corresponding "no" command undoing it.
 Example:
 ```
-blair_switch# debug // Enabling debug mod on all interfaces
-blair_switch# no debug // Disabling debug mod on all interfaces
+blair-switch# debug // Enabling debug mod on all interfaces
+blair-switch# no debug // Disabling debug mod on all interfaces
 ```
 
 General mod
@@ -48,6 +55,7 @@ General mod
 | Command | Action |
 |---------|--------|
 | show interfaces | Display all interfaces with their configurations |
+| show fib | Display MAC table entries |
 | debug | Enable debug mod on all interfaces |
 | no debug | Disable debug mod on all interfaces |
 | interface {interface\_name} | Set cli in "interface mode" on given interface |
@@ -72,7 +80,7 @@ Supported Features
 | Feature | Support |
 |---------|---------|
 | Frame flooding |  X |
-| Frame switching | |
+| Frame switching | X |
 | Port mirroring | |
 | Vlan mapping | |
 | 802.1q (Vlan) | |
@@ -81,5 +89,4 @@ Supported Features
 | 802.1ax (LACP) | |
 | 802.1ak (MRVP) | |
 | 802.1d  (STP) | |
-
 
