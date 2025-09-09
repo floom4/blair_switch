@@ -42,55 +42,60 @@ impl Switch<'_> {
     thread::scope(|scope| {
       let interfaces = std::mem::take(&mut self.interfaces);
 
-      for mut ing_intf in interfaces {
+      for ing_intf in interfaces {
         let rx = self.intfs_rx[&ing_intf.name.as_str()].clone();
         let mut egr_intfs = self.intfs_view.clone();
         egr_intfs.remove(&ing_intf.name[..]);
         let fib = Arc::clone(&self.fib);
 
-        let handle = scope.spawn( move || {
-          loop {
-
-            // Control plane
-            match rx.try_recv() {
-              Ok(IntfCmd::Shutdown) => ing_intf.close(),
-              Ok(IntfCmd::NoShutdown) => {
-                if let Err(err) = ing_intf.open() {
-                  eprintln!("Error: {}", err)
-                }
-              },
-              Err(crossbeam_channel::TryRecvError::Empty) => (),
-              Err(_) => (),
-            }
-
-
-            if !ing_intf.is_up() {
-              thread::sleep(time::Duration::from_millis(200));
-              continue;
-            }
-
-            // Data plane
-            match ing_intf.receive() {
-              Ok(Some(frame)) => {
-                fib.learn(&frame.src_mac, Arc::clone(&ing_intf.view));
-                if !frame.is_broadcast() &&
-                  let Some(egr_intf) = fib.lookup(&frame.dst_mac) &&
-                  egr_intf.is_up() {
-                  unicast(&egr_intf, &frame);
-                } else {
-                  flood(&egr_intfs, &frame);
-                }
-              }
-              Ok(None) => continue, // no data, timeout
-              Err(err) => {
-                eprintln!("Error: {}", err);
-              }
-            }
-          }
+        let _ = scope.spawn( move || {
+          run_interface_worker(ing_intf, rx, egr_intfs, fib);
         });
       }
+
       cli_run(&self.intfs_view, &self.fib);
     });
+  }
+}
+
+pub fn run_interface_worker<'a>(mut ing_intf: Interface<'a>, rx: Receiver<IntfCmd>, egr_intfs: HashMap<&str, Arc<InterfaceView>>, fib: Arc<Fib<'a>>) {
+  loop {
+
+    // Control plane
+    match rx.try_recv() {
+      Ok(IntfCmd::Shutdown) => ing_intf.close(),
+      Ok(IntfCmd::NoShutdown) => {
+        if let Err(err) = ing_intf.open() {
+          eprintln!("Error: {}", err)
+        }
+      },
+      Err(crossbeam_channel::TryRecvError::Empty) => (),
+      Err(_) => (),
+    }
+
+
+    if !ing_intf.is_up() {
+      thread::sleep(time::Duration::from_millis(200));
+      continue;
+    }
+
+    // Data plane
+    match ing_intf.receive() {
+      Ok(Some(frame)) => {
+        fib.learn(&frame.src_mac, Arc::clone(&ing_intf.view));
+        if !frame.is_broadcast() &&
+          let Some(egr_intf) = fib.lookup(&frame.dst_mac) &&
+          egr_intf.is_up() {
+          unicast(&egr_intf, &frame);
+        } else {
+          flood(&egr_intfs, &frame);
+        }
+      }
+      Ok(None) => continue, // no data, timeout
+      Err(err) => {
+        eprintln!("Error: {}", err);
+      }
+    }
   }
 }
 

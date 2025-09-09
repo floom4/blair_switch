@@ -197,7 +197,9 @@ impl InterfaceView<'_> {
   }
 
   pub fn send_cmd(&self, cmd: IntfCmd) {
-    self.tx.send(cmd);
+    if let Err(err) = self.tx.send(cmd){
+      eprintln!("Err: {}", err);
+    }
   }
 }
 

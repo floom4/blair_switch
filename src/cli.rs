@@ -34,7 +34,9 @@ pub fn cli_run(intfs_view: & HashMap<& str, Arc<InterfaceView>>, fib: &Arc<Fib>)
       CliMode::General => {
         match input {
           Ok(cmd) => {
-            rl.add_history_entry(&cmd);
+            if let Err(err) = rl.add_history_entry(&cmd) {
+              eprintln!("Err: {}", err);
+            }
             let tokens : Vec<&str> = cmd.split(" ").collect();
             match tokens.as_slice() {
               ["show", "interfaces"] => {
@@ -84,7 +86,9 @@ pub fn cli_run(intfs_view: & HashMap<& str, Arc<InterfaceView>>, fib: &Arc<Fib>)
       CliMode::Interface(ref intf) => {
         match input {
           Ok(cmd) => {
-            rl.add_history_entry(&cmd);
+            if let Err(err) = rl.add_history_entry(&cmd) {
+              eprintln!("Err: {}", err);
+            }
             let tokens : Vec<&str> = cmd.split(" ").collect();
             match tokens.as_slice() {
               ["show"] => println!("{}", intf),
