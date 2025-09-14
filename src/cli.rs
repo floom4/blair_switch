@@ -40,9 +40,11 @@ pub fn cli_run(intfs_view: & HashMap<& str, Arc<InterfaceView>>, fib: &Arc<Fib>)
             let tokens : Vec<&str> = cmd.split(" ").collect();
             match tokens.as_slice() {
               ["show", "interfaces"] => {
+                let mut keys: Vec<_> = intfs_view.keys().cloned().collect();
+                keys.sort();
                 println!("Interfaces:\n==========\n");
-                for (_, view) in intfs_view {
-                  println!("{}\n", view);
+                for intf in keys {
+                  println!("{}\n", intfs_view[intf]);
                 }
               },
               ["show", "fib"] => {
@@ -97,6 +99,20 @@ pub fn cli_run(intfs_view: & HashMap<& str, Arc<InterfaceView>>, fib: &Arc<Fib>)
               ["shutdown"] => {intf.send_cmd(IntfCmd::Shutdown);},
               ["no", "shutdown"] => {intf.send_cmd(IntfCmd::NoShutdown);},
               ["counters", "reset"] => {intf.reset_counters()},
+              ["switchport", "mode", "access"] => {intf.send_cmd(IntfCmd::PortModeAccess)},
+              ["switchport", "access", "vlan", vlan_str] => {
+                match vlan_str.parse::<u16>() {
+                  Ok(vlan) => {
+                    if vlan > 0 && vlan < 4096 {
+                      intf.send_cmd(IntfCmd::PortAccessVlan(vlan));
+                    } else {
+                      eprintln!("Error: invalid vlan \"{}\". Must be an number between 1 and 4095", vlan_str);
+                    }
+                  },
+                  Err(err) => eprintln!("Error: invalid vlan format \"{}\". Must be number between 1 and 4095", vlan_str),
+                }
+              },
+              ["no", "switchport", "access", "vlan"] => {intf.send_cmd(IntfCmd::PortModeAccess)},
               ["exit"] => mode = CliMode::General,
               _ => println!("Unknown command"),
             }

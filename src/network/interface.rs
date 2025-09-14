@@ -28,15 +28,25 @@ use libc::{
 
 use super::frame::Frame;
 
+pub const DEFAULT_VLAN : u16 = 1;
+
 pub enum IntfCmd {
   Shutdown,
   NoShutdown,
+  PortModeAccess,
+  PortAccessVlan(u16),
+}
+
+#[derive(Debug,Clone)]
+enum PortMode {
+  Access { vlan: u16 },
 }
 
 #[derive(Clone)]
 pub struct InterfaceRoData<'a> {
   //TODO move fd out of here and have one egr fd for each sender thread intf
   fd: Option<BorrowedFd<'a>>,
+  mode: PortMode,
 }
 
 pub struct InterfaceView<'a> {
@@ -64,7 +74,7 @@ impl Interface<'_> {
       in_pkts: AtomicU64::new(0), out_pkts: AtomicU64::new(0),
       in_bytes: AtomicU64::new(0), out_bytes: AtomicU64::new(0),
       debug_mode: AtomicBool::new(false),
-      intf_ro_data: ArcSwap::from_pointee(InterfaceRoData{ fd: None})};
+      intf_ro_data: ArcSwap::from_pointee(InterfaceRoData{ fd: None, mode: PortMode::Access{vlan: 1 }})};
     Interface{name: name.to_string(), if_index: if_index, fd: None, view: Arc::new(intf_view)}
   }
 
@@ -123,7 +133,10 @@ impl Interface<'_> {
           }
         }
       }
-      let frame = Frame::build(&buf, n as usize);
+      let mut frame = Frame::parse(&buf, n as usize);
+      if let PortMode::Access{vlan} = self.view.intf_ro_data.load().mode {
+        frame.tag(vlan)
+      }
       self.view.in_pkts.fetch_add(1, Ordering::Relaxed);
       self.view.in_bytes.fetch_add(n as u64, Ordering::Relaxed);
       if self.view.debug_mode.load(Ordering::Relaxed) {
@@ -135,34 +148,25 @@ impl Interface<'_> {
     }
   }
 
-  pub fn send(&self, frame: &Frame) -> io::Result<()> {
-    if let Some(fd) = &self.fd {
-      let data = frame.to_bytes();
-      let sent = unsafe { send(fd.as_raw_fd(), data.as_ptr() as *const _, data.len() as usize, 0) };
-      if sent != data.len() as isize {
-        return Err(io::Error::last_os_error());
-      }
-      self.view.out_pkts.fetch_add(1, Ordering::Relaxed);
-      self.view.out_bytes.fetch_add(sent as u64, Ordering::Relaxed);
-      if self.view.debug_mode.load(Ordering::Relaxed) {
-        println!("Data sent to {}(pkts {}, bytes {})", self.name,
-          self.view.out_pkts.load(Ordering::Relaxed), self.view.out_bytes.load(Ordering::Relaxed));
-      }
-      Ok(())
-    }
-    else {
-      Err(io::Error::new(io::ErrorKind::BrokenPipe, "fd closed"))
-    }
-  }
-
   pub fn is_up(&self) -> bool {
     self.fd.is_some() 
+  }
+
+  pub fn set_port_mode_access_vlan(&self, vlan: u16) {
+    debug_assert!(vlan > 0 && vlan < 4096);
+    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
+    intf_ro_data.mode = PortMode::Access{vlan: vlan};
+    self.view.intf_ro_data.store(Arc::new(intf_ro_data));
   }
 }
 
 impl InterfaceView<'_> {
-  pub fn send(&self, frame: &Frame) -> io::Result<()> {
+  pub fn send(&self, mut frame: Frame) -> io::Result<()> {
     if let Some(fd) = &self.intf_ro_data.load().fd {
+      if let PortMode::Access{vlan} = self.intf_ro_data.load().mode {
+        debug_assert!(vlan == frame.get_vlan()); //vlan should be checked before
+        frame.untag();
+      }
       let data = frame.to_bytes();
       let sent = unsafe { send(fd.as_raw_fd(), data.as_ptr() as *const _, data.len() as usize, 0) };
       if sent != data.len() as isize {
@@ -201,6 +205,12 @@ impl InterfaceView<'_> {
       eprintln!("Err: {}", err);
     }
   }
+
+  pub fn allows_vlan(&self, vlan: u16) -> bool {
+    match &self.intf_ro_data.load().mode {
+      PortMode::Access{vlan: port_vlan} => *port_vlan == vlan,
+    }
+  }
 }
 
 fn get_if_index(if_name: &str) -> io::Result<u32> {
@@ -215,12 +225,16 @@ fn get_if_index(if_name: &str) -> io::Result<u32> {
 impl fmt::Display for InterfaceView<'_> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let ro_data = self.intf_ro_data.load();
-    write!(f, "{}\n----------\nStatus: {}\nFd: {:?}\nIn Pkts: {} Out Pkts: {}\nIn bytes: {}, Out bytes: {}\nDebug Mode: {}",
+    write!(f, "{}\n----------\nStatus: {}\nMode: {}\n",
       self.name,
       if let Some(_) = &ro_data.fd { "running" } else { "shutdown" },
-      &ro_data.fd,
+      if let PortMode::Access{..} = ro_data.mode { "Access" } else { "Unknown" });
+    if let PortMode::Access{vlan} = ro_data.mode {
+      write!(f, "Vlan: {}\n", vlan);
+    }
+    write!(f, "Mode Debug: {}\n", self.debug_mode.load(Ordering::Relaxed));
+    write!(f, "\nIn Pkts: {} Out Pkts: {}\nIn bytes: {}, Out bytes: {}\n",
       self.in_pkts.load(Ordering::Relaxed), self.out_pkts.load(Ordering::Relaxed),
-      self.in_bytes.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed),
-      self.debug_mode.load(Ordering::Relaxed))
+      self.in_bytes.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed))
   }
 }

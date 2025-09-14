@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::{thread, time};
 use crossbeam_channel::{unbounded, Receiver};
 
-use network::interface::{Interface, InterfaceView, IntfCmd};
+use network::interface::{Interface, InterfaceView, IntfCmd, DEFAULT_VLAN};
 use network::frame::Frame;
 use fib::Fib;
 use cli::cli_run;
@@ -69,8 +69,10 @@ pub fn run_interface_worker<'a>(mut ing_intf: Interface<'a>, rx: Receiver<IntfCm
           eprintln!("Error: {}", err)
         }
       },
+      Ok(IntfCmd::PortAccessVlan(vlan)) => {ing_intf.set_port_mode_access_vlan(vlan)},
+      Ok(IntfCmd::PortModeAccess) => {ing_intf.set_port_mode_access_vlan(DEFAULT_VLAN)},
       Err(crossbeam_channel::TryRecvError::Empty) => (),
-      Err(_) => (),
+      Err(err) => eprintln!("Error: {}", err),
     }
 
 
@@ -82,10 +84,11 @@ pub fn run_interface_worker<'a>(mut ing_intf: Interface<'a>, rx: Receiver<IntfCm
     // Data plane
     match ing_intf.receive() {
       Ok(Some(frame)) => {
-        fib.learn(&frame.src_mac, Arc::clone(&ing_intf.view));
+        fib.learn(frame.get_vlan(), &frame.src_mac, Arc::clone(&ing_intf.view));
         if !frame.is_broadcast() &&
-          let Some(egr_intf) = fib.lookup(&frame.dst_mac) &&
-          egr_intf.is_up() {
+          let Some(egr_intf) = fib.lookup(frame.get_vlan(), &frame.dst_mac) &&
+          egr_intf.is_up() &&
+          egr_intf.allows_vlan(frame.get_vlan()){
           unicast(&egr_intf, &frame);
         } else {
           flood(&egr_intfs, &frame);
@@ -102,8 +105,8 @@ pub fn run_interface_worker<'a>(mut ing_intf: Interface<'a>, rx: Receiver<IntfCm
 // Frame flooding
 pub fn flood(intfs: &HashMap<&str, Arc<InterfaceView>>, frame: &Frame) {
   for (_, intf) in intfs {
-    if intf.is_up() {
-      if let Err(err) = intf.send(&frame) {
+    if intf.is_up() && intf.allows_vlan(frame.get_vlan()) {
+      if let Err(err) = intf.send(frame.clone()) {
         eprintln!("Error: {}", err);
       }
     }
@@ -111,7 +114,7 @@ pub fn flood(intfs: &HashMap<&str, Arc<InterfaceView>>, frame: &Frame) {
 }
 
 pub fn unicast(intf: &Arc<InterfaceView>, frame: &Frame) {
-  if let Err(err) = intf.send(&frame) {
+  if let Err(err) = intf.send(frame.clone()) {
     eprintln!("Error: {}", err);
   }
 }
