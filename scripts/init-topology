@@ -1,0 +1,52 @@
+#!/bin/sh
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "This command need to be run as root."
+  exit 1
+fi
+
+if [[ "${#}" -lt 2 ]]; then
+  echo "Usage: ${0} [HOST1 [HOST2...]]"
+  exit 1
+fi
+
+for host in "sw" "$@"; do
+  ip netns delete "${host}" &> /dev/null # Cleanup
+  ip netns add "${host}" && echo "Host '${host}' created."
+done
+
+i=1
+for host in "$@"; do
+  SWITCH_IF="if${i}-sw"
+  HOST_IF="if${i}-${host}"
+  ip link add "${SWITCH_IF}" type veth peer name "${HOST_IF}"
+
+  ip link set dev "${SWITCH_IF}" netns "sw" up
+  ip link set dev "${HOST_IF}" netns "${host}" up
+
+  ip netns exec "sw" ethtool -K "${SWITCH_IF}" tx off > /dev/null
+  ip netns exec "${host}" ethtool -K "${HOST_IF}" tx off > /dev/null
+  echo "Link ${SWITCH_IF}@sw -> ${HOST_IF}@${host} created"
+  i=$((i+1))
+done
+
+# Disable ipv6 to remove unplanned traffic
+for host in "sw" "$@"; do
+  ip netns exec "${host}" capsh \
+  --caps="cap_net_admin,cap_net_raw+eip cap_setpcap,cap_setuid,cap_setgid+ep" \
+  --keep=1 --user="$(logname)" --addamb="cap_net_admin,cap_net_raw" -- \
+  -c "sysctl -w net.ipv6.conf.all.disable_ipv6=1"
+  echo "Disabled ipv6 for ${host}"
+done
+
+# Add ipv4 to test l3 traffic
+i=1
+for host in "$@"; do
+  HOST_IF="if${i}-${host}"
+  ip netns exec "${host}" capsh \
+  --caps="cap_net_admin,cap_net_raw+eip cap_setpcap,cap_setuid,cap_setgid+ep" \
+  --keep=1 --user="$(logname)" --addamb="cap_net_admin,cap_net_raw" -- \
+  -c "ip addr add 192.168.10.1${i}/24 dev ${HOST_IF}"
+  echo "Add ip 192.168.10.1${i} to ${HOST_IF}@${host}"
+  i=$((i+1))
+done

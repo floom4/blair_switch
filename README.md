@@ -23,8 +23,30 @@
 
 ```
 
-This is a rust project to help learn the language consisting in implementing a virtual switch in
-the manner of open vswitch.
+This is a project to learn rust language which aim to implement a virtual switch.
+
+Usage:
+======
+
+```
+Usage:
+	blair_switch [OPTIONS] [INTERFACES...]
+Arguments:
+	INTERFACES	List of interfaces to attach to the switch
+Options:
+	-h, --help	Show this help message
+```
+
+Quick simple virtual topology setup and test:
+```
+sh# make init # Creates namespaces for switch and 4 hosts with corresponding links
+sh# make run &# Runs switch in "sw" namespace with corresponding interfaces as arguments
+sh# scripts/host-exec host2 arping -c 1 192.168.10.11
+ARPING 192.168.10.11 from 192.168.10.12 if2-host2
+Unicast reply from 192.168.10.11 [8A:D4:28:A8:87:6E]  0.693ms
+Sent 1 probes (1 broadcast(s))
+Received 1 response(s)
+```
 
 CLI
 ===

@@ -1,0 +1,18 @@
+#!/bin/sh
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "This command need to be run as root."
+  exit 1
+fi
+
+if [[ "${#}" -lt 2 ]]; then
+  echo "Usage: ${0} HOST CMD [ARG1 [ARG2...]]"
+  exit 1
+fi
+
+HOST="${1}"
+shift
+
+exec ip netns exec "${HOST}" capsh \
+  --caps="cap_net_admin,cap_net_raw+eip cap_setpcap,cap_setuid,cap_setgid+ep" \
+  --keep=1 --user="$(logname)" --addamb="cap_net_admin,cap_net_raw" -- -c "${*}"
