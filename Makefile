@@ -11,3 +11,6 @@ run: build
 
 debug: build
 	sudo scripts/host-exec sw "RUST_BACKTRACE=1 ${BIN} if1-sw if2-sw if3-sw if4-sw"
+
+test:
+	sudo ./tests/basic_test.py
