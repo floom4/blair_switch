@@ -34,21 +34,24 @@ pub enum IntfCmd {
   Shutdown,
   NoShutdown,
   PortModeAccess,
+  PortModeMonitoring(String),
   PortAccessVlan(u16),
 }
 
 #[derive(Debug,Clone)]
 enum PortMode {
   Access { vlan: u16 },
+  Monitoring(String),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InterfaceRoData<'a> {
   //TODO move fd out of here and have one egr fd for each sender thread intf
   fd: Option<BorrowedFd<'a>>,
   mode: PortMode,
 }
 
+#[derive(Debug)]
 pub struct InterfaceView<'a> {
   pub name: String,
   tx: Sender<IntfCmd>,
@@ -74,7 +77,8 @@ impl Interface<'_> {
       in_pkts: AtomicU64::new(0), out_pkts: AtomicU64::new(0),
       in_bytes: AtomicU64::new(0), out_bytes: AtomicU64::new(0),
       debug_mode: AtomicBool::new(false),
-      intf_ro_data: ArcSwap::from_pointee(InterfaceRoData{ fd: None, mode: PortMode::Access{vlan: 1 }})};
+      intf_ro_data: ArcSwap::from_pointee(InterfaceRoData{ fd: None, mode: PortMode::Access{vlan: 1 }})
+    };
     Interface{name: name.to_string(), if_index: if_index, fd: None, view: Arc::new(intf_view)}
   }
 
@@ -152,6 +156,19 @@ impl Interface<'_> {
     self.fd.is_some() 
   }
 
+  pub fn set_port_mode_monitoring(&self, target: &String) {
+    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
+    intf_ro_data.mode = PortMode::Monitoring(target.clone());
+    self.view.intf_ro_data.store(Arc::new(intf_ro_data));
+  }
+
+  pub fn get_monitoring_targets(&self) -> Option<String> {
+    if let PortMode::Monitoring(target) = &self.view.intf_ro_data.load().mode {
+      return Some(target.clone());
+    }
+    None
+  }
+
   pub fn set_port_mode_access_vlan(&self, vlan: u16) {
     debug_assert!(vlan > 0 && vlan < 4096);
     let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
@@ -161,23 +178,24 @@ impl Interface<'_> {
 }
 
 impl InterfaceView<'_> {
+
   pub fn send(&self, mut frame: Frame) -> io::Result<()> {
     if let Some(fd) = &self.intf_ro_data.load().fd {
-      if let PortMode::Access{vlan} = self.intf_ro_data.load().mode {
-        debug_assert!(vlan == frame.get_vlan()); //vlan should be checked before
-        frame.untag();
-      }
+
       let data = frame.to_bytes();
       let sent = unsafe { send(fd.as_raw_fd(), data.as_ptr() as *const _, data.len() as usize, 0) };
       if sent != data.len() as isize {
         return Err(io::Error::last_os_error());
       }
+
       self.out_pkts.fetch_add(1, Ordering::Relaxed);
       self.out_bytes.fetch_add(sent as u64, Ordering::Relaxed);
+
       if self.debug_mode.load(Ordering::Relaxed) {
         println!("Data sent to {}(pkts {}, bytes {})", self.name,
           self.out_pkts.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed));
       }
+
       Ok(())
     }
     else {
@@ -185,8 +203,20 @@ impl InterfaceView<'_> {
     }
   }
 
+  pub fn egr_process_frame(&self, mut frame: Frame) -> Frame {
+     if let PortMode::Access{vlan} = self.intf_ro_data.load().mode {
+       debug_assert!(vlan == frame.get_vlan()); //vlan should be checked before
+       frame.untag()
+     }
+     frame
+  }
+
   pub fn is_up(&self) -> bool {
     self.intf_ro_data.load().fd.is_some() 
+  }
+
+  pub fn is_monitoring(&self) -> bool {
+    matches!( self.intf_ro_data.load().mode, PortMode::Monitoring(_))
   }
 
   pub fn set_debug_mode(&self, value: bool) {
@@ -209,6 +239,7 @@ impl InterfaceView<'_> {
   pub fn allows_vlan(&self, vlan: u16) -> bool {
     match &self.intf_ro_data.load().mode {
       PortMode::Access{vlan: port_vlan} => *port_vlan == vlan,
+      PortMode::Monitoring(_) => panic!("Unexpected path")
     }
   }
 }
@@ -228,10 +259,20 @@ impl fmt::Display for InterfaceView<'_> {
     write!(f, "{}\n----------\nStatus: {}\nMode: {}\n",
       self.name,
       if let Some(_) = &ro_data.fd { "running" } else { "shutdown" },
-      if let PortMode::Access{..} = ro_data.mode { "Access" } else { "Unknown" });
+      match ro_data.mode {
+        PortMode::Access{..} => "Access",
+        PortMode::Monitoring(_) => "Monitoring",
+        _ => "Unknown",
+      }
+    );
+
     if let PortMode::Access{vlan} = ro_data.mode {
       write!(f, "Vlan: {}\n", vlan);
     }
+    if let PortMode::Monitoring(ref target) = ro_data.mode {
+      write!(f, "Monitoring: {}\n", target);
+    }
+
     write!(f, "Mode Debug: {}\n", self.debug_mode.load(Ordering::Relaxed));
     write!(f, "\nIn Pkts: {} Out Pkts: {}\nIn bytes: {}, Out bytes: {}\n",
       self.in_pkts.load(Ordering::Relaxed), self.out_pkts.load(Ordering::Relaxed),

@@ -2,7 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::process;
 use std::sync::Arc;
+use dashmap::{DashMap, Entry};
 use rustyline::error::ReadlineError;
+
 use super::network::interface::{InterfaceView, IntfCmd};
 use super::fib::Fib;
 
@@ -25,7 +27,9 @@ fn generate_prompt(mode: &CliMode) -> String {
   prompt
 }
 
-pub fn cli_run(intfs_view: &HashMap<&str, Arc<InterfaceView>>, fib: &Arc<Fib>) {
+pub fn cli_run(intfs_view: &HashMap<&str, Arc<InterfaceView>>, fib: &Arc<Fib>,
+  mirrors: &DashMap<String, Vec<Arc<InterfaceView>>> ) {
+
   let mut rl = rustyline::DefaultEditor::new().unwrap();
   let mut mode = CliMode::General;
   let mut config = HashMap::new();
@@ -47,7 +51,9 @@ pub fn cli_run(intfs_view: &HashMap<&str, Arc<InterfaceView>>, fib: &Arc<Fib>) {
   }
 }
 
-fn handle_general_cmd(input: &rustyline::Result<String>, intfs_view: &HashMap<&str, Arc<InterfaceView>>, fib: &Arc<Fib>, mode: &mut CliMode, config: &HashMap<CliMode, HashSet<String>>) {
+fn handle_general_cmd(input: &rustyline::Result<String>, intfs_view: &HashMap<&str, Arc<InterfaceView>>,
+  fib: &Arc<Fib>, mode: &mut CliMode, config: &HashMap<CliMode, HashSet<String>>) {
+
   match input {
     Ok(cmd) => {
       /*if let Err(err) = rl.add_history_entry(&cmd) {
@@ -112,7 +118,9 @@ fn handle_general_cmd(input: &rustyline::Result<String>, intfs_view: &HashMap<&s
   }
 }
 
-fn handle_interface_cmd(input: &rustyline::Result<String>, intfs_view: &HashMap<&str, Arc<InterfaceView>>, fib: &Arc<Fib>, mode: &mut CliMode, config: &mut HashMap<CliMode, HashSet<String>>, if_name: &String) {
+fn handle_interface_cmd(input: &rustyline::Result<String>, intfs_view: &HashMap<&str, Arc<InterfaceView>>,
+  fib: &Arc<Fib>, mode: &mut CliMode, config: &mut HashMap<CliMode, HashSet<String>>, if_name: &String) {
+
   let intf = &intfs_view[&if_name[..]];
   match input {
     Ok(cmd) => {
@@ -134,6 +142,13 @@ fn handle_interface_cmd(input: &rustyline::Result<String>, intfs_view: &HashMap<
         ["no", "shutdown"] => {intf.send_cmd(IntfCmd::NoShutdown);},
         ["counters", "reset"] => {intf.reset_counters()},
         ["switchport", "mode", "access"] => {intf.send_cmd(IntfCmd::PortModeAccess)},
+        ["switchport", "mode", "monitor", src_intf_str] => {
+            if intfs_view.contains_key(*src_intf_str) {
+              intf.send_cmd(IntfCmd::PortModeMonitoring(src_intf_str.to_string()));
+            } else {
+              println!("Interface {} not found", src_intf_str);
+            }
+        }
         ["switchport", "access", "vlan", vlan_str] => {
           match vlan_str.parse::<u16>() {
             Ok(vlan) => {
