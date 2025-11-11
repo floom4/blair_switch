@@ -81,6 +81,7 @@ General mod
 | debug | Enable debug mod on all interfaces |
 | no debug | Disable debug mod on all interfaces |
 | interface {interface\_name} | Set cli in "interface mode" on given interface |
+| help | Display available commands |
 | exit | Exit program |
 
 
@@ -98,6 +99,7 @@ Interface mod
 | switchport access vlan {vlan\_id} | Change access port vlan to {vlan\_id}. vlan\_id must be a number between 1 and 4095 |
 | switchport mode monitor {if\_name}| Configure interface to mirror egress on given port |
 | no switchport access vlan | Revert access port vlan to default (1) |
+| help | Display available commands |
 | exit | Exit interface mod and goes back to general mod |
 
 Supported Features

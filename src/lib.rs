@@ -7,7 +7,7 @@ use dashmap::{DashMap, Entry};
 use network::interface::{Interface, InterfaceView, IntfCmd, DEFAULT_VLAN};
 use network::frame::Frame;
 use fib::Fib;
-use cli::cli_run;
+use cli::shell::cli_run;
 
 pub mod network;
 pub mod fib;

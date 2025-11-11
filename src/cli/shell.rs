@@ -5,11 +5,12 @@ use std::sync::Arc;
 use dashmap::{DashMap, Entry};
 use rustyline::error::ReadlineError;
 
-use super::network::interface::{InterfaceView, IntfCmd};
-use super::fib::Fib;
+use super::commands;
+use crate::network::interface::{InterfaceView, IntfCmd};
+use crate::fib::Fib;
 
 #[derive(PartialOrd, Ord, Clone, Eq, PartialEq, Hash)]
-enum CliMode {
+pub enum CliMode {
   General,
   Interface(String), //Arc<InterfaceView<'a>>),
 }
@@ -108,6 +109,7 @@ fn handle_general_cmd(input: &rustyline::Result<String>, intfs_view: &HashMap<&s
         },
         ["config", "load", filepath] => {
         },
+        ["help"] => commands::display_help_menu(&mode),
         ["exit"] => process::exit(0),
         _ => println!("Unknown command"),
       }
@@ -163,6 +165,7 @@ fn handle_interface_cmd(input: &rustyline::Result<String>, intfs_view: &HashMap<
           }
         },
         ["no", "switchport", "access", "vlan"] => {intf.send_cmd(IntfCmd::PortModeAccess)},
+        ["help"] => commands::display_help_menu(&mode),
         ["exit"] => *mode = CliMode::General,
         _ => println!("Unknown command"),
       }
