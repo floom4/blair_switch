@@ -1,0 +1,62 @@
+use std::collections::HashSet;
+use std::sync::Arc;
+
+use arc_swap::ArcSwap;
+use rustyline::completion::Completer;
+use rustyline::highlight::Highlighter;
+use rustyline::hint::Hinter;
+use rustyline::validate::Validator;
+use rustyline::{Editor, Helper, Context, Result};
+
+use super::commands;
+use super::shell::CliMode;
+
+pub struct CommandHelper<'a> {
+  pub mode: &'a ArcSwap<CliMode>,
+}
+
+impl Completer for CommandHelper<'_> {
+  type Candidate = String;
+  fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        ctx: &Context<'_>,
+    ) -> Result<(usize, Vec<Self::Candidate>)> {
+    let mut candidates = HashSet::new();//Vec::new();
+    let tokens : Vec<&str> = line.split(" ").collect();
+
+    let cmds = match self.mode.load().as_ref() {
+      CliMode::General => commands::GENERAL_COMMANDS,
+      CliMode::Interface(_) => commands::INTF_COMMANDS,
+      _ => panic!(),
+    };
+    'main: for cmd in cmds {
+      if tokens.len() > cmd.pattern.len() {
+        continue
+      }
+      for i in 0..tokens.len()-1 {
+        if tokens[i] != cmd.pattern[i] {
+          continue 'main;
+        }
+      }
+      if cmd.pattern[tokens.len() - 1].starts_with(tokens[tokens.len() - 1]) {
+        _ = candidates.insert(cmd.pattern[tokens.len() - 1].to_string());
+      }
+    }
+    return Ok((pos - tokens[tokens.len() - 1].len(), candidates.into_iter().collect()));
+  }
+}
+
+impl Helper for CommandHelper<'_> {
+}
+
+impl Hinter for CommandHelper<'_> {
+  type Hint = String;
+}
+
+impl Highlighter for CommandHelper<'_> {
+}
+
+impl Validator for CommandHelper<'_> {
+}

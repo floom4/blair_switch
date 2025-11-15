@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::process;
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
+
 use crate::fib::Fib;
 use crate::network::interface::{InterfaceView, IntfCmd};
 use super::shell::{CliMode, IntfsViewMap};
@@ -9,7 +11,7 @@ use super::shell::{CliMode, IntfsViewMap};
 pub struct Command<'a> {
   pub pattern: &'a [&'a str] ,
   description: &'a str,
-  handler: fn(&IntfsViewMap, &Arc<Fib>, &mut CliMode, Arc<InterfaceView>, &mut HashMap<CliMode, HashSet<String>>, HashMap<String, String>),
+  handler: fn(&IntfsViewMap, &Arc<Fib>, &ArcSwap<CliMode>, Arc<InterfaceView>, &mut HashMap<CliMode, HashSet<String>>, HashMap<String, String>),
 }
 
 pub const GENERAL_COMMANDS: &[Command] = &[
@@ -38,7 +40,7 @@ pub const GENERAL_COMMANDS: &[Command] = &[
     handler: | intfs_view, _, mode, _, _, args | {
       let intf_name = &args["intf"];
       if intfs_view.contains_key(&intf_name[..]) {
-        *mode = CliMode::Interface(intf_name.to_string());
+        mode.store(Arc::new(CliMode::Interface(intf_name.to_string())));
       } else {
         println!("Interface {} not found", intf_name);
       }
@@ -219,7 +221,7 @@ pub const INTF_COMMANDS: &[Command] = &[
     pattern: &["exit"],
     description: "Exit interface configuration mode",
     handler: | _, _, mode, _, _, _ | {
-      *mode = CliMode::General
+      mode.store(Arc::new(CliMode::General))
     }
   },
 ];
@@ -249,7 +251,7 @@ impl Command<'_> {
     result
   }
 
-  pub fn run(&self, intfs_view: &IntfsViewMap, fib: &Arc<Fib>, mode: &mut CliMode, intf: Arc<InterfaceView>, conf: &mut HashMap<CliMode, HashSet<String>>, cmd: &String ) {
+  pub fn run(&self, intfs_view: &IntfsViewMap, fib: &Arc<Fib>, mode: &ArcSwap<CliMode>, intf: Arc<InterfaceView>, conf: &mut HashMap<CliMode, HashSet<String>>, cmd: &String ) {
     let args = self.extract_args(cmd);
     (self.handler)(intfs_view, fib, mode, intf, conf, args)
   }
