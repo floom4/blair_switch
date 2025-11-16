@@ -23,7 +23,7 @@ impl Completer for CommandHelper<'_> {
         pos: usize,
         ctx: &Context<'_>,
     ) -> Result<(usize, Vec<Self::Candidate>)> {
-    let mut candidates = HashSet::new();//Vec::new();
+    let mut candidates = HashSet::new();
     let tokens : Vec<&str> = line.split(" ").collect();
 
     let cmds = match self.mode.load().as_ref() {
@@ -31,6 +31,7 @@ impl Completer for CommandHelper<'_> {
       CliMode::Interface(_) => commands::INTF_COMMANDS,
       _ => panic!(),
     };
+
     'main: for cmd in cmds {
       if tokens.len() > cmd.pattern.len() {
         continue
@@ -44,6 +45,12 @@ impl Completer for CommandHelper<'_> {
         _ = candidates.insert(cmd.pattern[tokens.len() - 1].to_string());
       }
     }
+
+    if candidates.len() > 1 {
+      println!("");
+      commands::display_candidates_help_menu(self.mode.load().as_ref(), &tokens.join(" "));
+    }
+
     return Ok((pos - tokens[tokens.len() - 1].len(), candidates.into_iter().collect()));
   }
 }

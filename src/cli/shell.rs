@@ -19,7 +19,7 @@ pub type IntfsViewMap<'a> = HashMap<&'a str, Arc<InterfaceView<'a>>>;
 #[derive(PartialOrd, Ord, Clone, Eq, PartialEq, Hash)]
 pub enum CliMode {
   General,
-  Interface(String), //Arc<InterfaceView<'a>>),
+  Interface(String),
 }
 
 fn generate_prompt(mode: &CliMode) -> String {
@@ -47,6 +47,7 @@ pub fn cli_run(intfs_view: &IntfsViewMap, fib: &Arc<Fib>,
   'main: loop {
     let prompt = generate_prompt(mode.load().as_ref());
     let input = rl.readline(&prompt);
+
     match mode.load().as_ref() {
       CliMode::General => {
         match input {

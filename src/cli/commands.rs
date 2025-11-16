@@ -104,10 +104,8 @@ pub const GENERAL_COMMANDS: &[Command] = &[
   Command {
     pattern: &["help"],
     description: "Display this help menu with available commandes",
-    handler: | _, _, _, _, _, _ | {
-      for cmd in GENERAL_COMMANDS {
-        println!("{:<40} {}", cmd.pattern.join(" "), cmd.description)
-      }
+    handler: | _, _, mode, _, _, _ | {
+      display_candidates_help_menu(mode.load().as_ref(), &String::new());
     },
   },
   Command {
@@ -211,10 +209,8 @@ pub const INTF_COMMANDS: &[Command] = &[
   Command {
     pattern: &["help"],
     description: "Display this help menu with available commandes",
-    handler: | _, _, _, _, _, _ | {
-      for cmd in INTF_COMMANDS {
-        println!("{:<40} {}", cmd.pattern.join(" "), cmd.description)
-      }
+    handler: | _, _, mode, _, _, _ | {
+      display_candidates_help_menu(mode.load().as_ref(), &String::new());
     }
   },
   Command {
@@ -255,4 +251,18 @@ impl Command<'_> {
     let args = self.extract_args(cmd);
     (self.handler)(intfs_view, fib, mode, intf, conf, args)
   }
+}
+
+pub fn display_candidates_help_menu(mode: &CliMode, current_cmd: &String) {
+  let mut cmds =  match mode {
+    CliMode::General => GENERAL_COMMANDS,
+    CliMode::Interface(_) => INTF_COMMANDS,
+    _ => panic!(),
+  };
+  for cmd in cmds {
+    if cmd.pattern.join(" ").starts_with(current_cmd) {
+      println!("{:<40} {}", cmd.pattern.join(" "), cmd.description)
+    }
+  }
+  println!("");
 }
