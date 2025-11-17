@@ -107,15 +107,17 @@ impl Frame {
 
 impl fmt::Display for Frame {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    let mut output = format!("Src MAC: {}, Dest MAC: {}, ", self.src_mac, self.dst_mac);
+    if let Some(tag) = &self.tag {
+      output += &format!("Tag: {}, ", tag);
+    }
+
     let mut data_str = String::new();
     for byte in &self.data {
       data_str += &format!("{:X}", &byte);
     }
-    write!(f, "Src MAC: {}, Dest MAC: {}, ", self.src_mac, self.dst_mac);
-    if let Some(tag) = &self.tag {
-      write!(f, "Tag: {}, ", tag);
-    }
-    write!(f, "EthType: {}, Data: {}", self.get_eth_type(), data_str)
+    output += &format!("EthType: {}, Data: {}", self.get_eth_type(), data_str);
+    write!(f, "{}", output)
   }
 }
 

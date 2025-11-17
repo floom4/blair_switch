@@ -1,12 +1,11 @@
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use rustyline::completion::Completer;
 use rustyline::highlight::Highlighter;
 use rustyline::hint::Hinter;
 use rustyline::validate::Validator;
-use rustyline::{Editor, Helper, Context, Result};
+use rustyline::{Helper, Context, Result};
 
 use super::commands;
 use super::shell::CliMode;
@@ -21,7 +20,7 @@ impl Completer for CommandHelper<'_> {
         &self,
         line: &str,
         pos: usize,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>,
     ) -> Result<(usize, Vec<Self::Candidate>)> {
     let mut candidates = HashSet::new();
     let tokens : Vec<&str> = line.split(" ").collect();
@@ -29,7 +28,6 @@ impl Completer for CommandHelper<'_> {
     let cmds = match self.mode.load().as_ref() {
       CliMode::General => commands::GENERAL_COMMANDS,
       CliMode::Interface(_) => commands::INTF_COMMANDS,
-      _ => panic!(),
     };
 
     'main: for cmd in cmds {

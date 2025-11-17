@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::{thread, time};
 use crossbeam_channel::{unbounded, Receiver};
-use dashmap::{DashMap, Entry};
+use dashmap::DashMap;
 
 use network::interface::{Interface, InterfaceView, IntfCmd, DEFAULT_VLAN};
 use network::frame::Frame;
@@ -59,7 +59,7 @@ impl Switch<'_> {
         });
       }
 
-      cli_run(&self.intfs_view, &self.fib, &self.mirrors);
+      cli_run(&self.intfs_view, &self.fib);
     });
   }
 }

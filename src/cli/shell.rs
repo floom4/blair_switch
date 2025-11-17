@@ -1,17 +1,13 @@
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::process;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
-use dashmap::{DashMap, Entry};
 use rustyline::error::ReadlineError;
-
-use rustyline::{CompletionType, Config, Context, Editor, Result};
 
 use super::helper;
 use super::commands;
-use crate::network::interface::{InterfaceView, IntfCmd};
+use crate::network::interface::InterfaceView;
 use crate::fib::Fib;
 
 pub type IntfsViewMap<'a> = HashMap<&'a str, Arc<InterfaceView<'a>>>;
@@ -35,8 +31,7 @@ fn generate_prompt(mode: &CliMode) -> String {
   prompt
 }
 
-pub fn cli_run(intfs_view: &IntfsViewMap, fib: &Arc<Fib>,
-  mirrors: &DashMap<String, Vec<Arc<InterfaceView>>> ) {
+pub fn cli_run(intfs_view: &IntfsViewMap, fib: &Arc<Fib>) {
 
   let mut rl = rustyline::Editor::new().unwrap();
   let mut mode = &ArcSwap::new(Arc::new(CliMode::General));

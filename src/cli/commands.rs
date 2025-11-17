@@ -128,7 +128,7 @@ pub const INTF_COMMANDS: &[Command] = &[
   Command {
     pattern: &["debug"],
     description: "Enable debug mode on interface",
-    handler: | _, _, mode, curr_intf, config, _ | {
+    handler: | _, _, _, curr_intf, config, _ | {
       curr_intf.set_debug_mode(true);
       //config.entry(mode.clone()).or_insert(HashSet::new()).insert(cmd.clone());
     },
@@ -192,10 +192,10 @@ pub const INTF_COMMANDS: &[Command] = &[
             intf.send_cmd(IntfCmd::PortAccessVlan(vlan));
             //config.entry(mode.clone()).or_insert(HashSet::new()).insert(cmd.clone());
           } else {
-            eprintln!("Error: invalid vlan \"{}\". Must be an number between 1 and 4095", vlan_str);
+            eprintln!("Error: invalid vlan \"{}\". Must be between 1 and 4095", vlan_str);
           }
         },
-        Err(err) => eprintln!("Error: invalid vlan format \"{}\". Must be number between 1 and 4095", vlan_str),
+        Err(_) => eprintln!("Error: invalid vlan format \"{}\". Must be number between 1 and 4095", vlan_str),
       }
     },
   },
@@ -254,10 +254,9 @@ impl Command<'_> {
 }
 
 pub fn display_candidates_help_menu(mode: &CliMode, current_cmd: &String) {
-  let mut cmds =  match mode {
+  let cmds =  match mode {
     CliMode::General => GENERAL_COMMANDS,
     CliMode::Interface(_) => INTF_COMMANDS,
-    _ => panic!(),
   };
   for cmd in cmds {
     if cmd.pattern.join(" ").starts_with(current_cmd) {

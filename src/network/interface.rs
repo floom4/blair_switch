@@ -179,7 +179,7 @@ impl Interface<'_> {
 
 impl InterfaceView<'_> {
 
-  pub fn send(&self, mut frame: Frame) -> io::Result<()> {
+  pub fn send(&self, frame: Frame) -> io::Result<()> {
     if let Some(fd) = &self.intf_ro_data.load().fd {
 
       let data = frame.to_bytes();
@@ -256,26 +256,26 @@ fn get_if_index(if_name: &str) -> io::Result<u32> {
 impl fmt::Display for InterfaceView<'_> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let ro_data = self.intf_ro_data.load();
-    write!(f, "{}\n----------\nStatus: {}\nMode: {}\n",
+    let mut output = format!("{}\n----------\nStatus: {}\nMode: {}\n",
       self.name,
       if let Some(_) = &ro_data.fd { "running" } else { "shutdown" },
       match ro_data.mode {
         PortMode::Access{..} => "Access",
         PortMode::Monitoring(_) => "Monitoring",
-        _ => "Unknown",
       }
     );
 
     if let PortMode::Access{vlan} = ro_data.mode {
-      write!(f, "Vlan: {}\n", vlan);
+      output += &format!("Vlan: {}\n", vlan);
     }
     if let PortMode::Monitoring(ref target) = ro_data.mode {
-      write!(f, "Monitoring: {}\n", target);
+      output += &format!("Monitoring: {}\n", target);
     }
 
-    write!(f, "Mode Debug: {}\n", self.debug_mode.load(Ordering::Relaxed));
-    write!(f, "\nIn Pkts: {} Out Pkts: {}\nIn bytes: {}, Out bytes: {}\n",
+    output += &format!("Mode Debug: {}\n", self.debug_mode.load(Ordering::Relaxed));
+    output += &format!("\nIn Pkts: {}, Out Pkts: {}\nIn bytes: {}, Out bytes: {}\n",
       self.in_pkts.load(Ordering::Relaxed), self.out_pkts.load(Ordering::Relaxed),
-      self.in_bytes.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed))
+      self.in_bytes.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed));
+    write!(f, "{}", output)
   }
 }
