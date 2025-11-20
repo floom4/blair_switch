@@ -97,6 +97,9 @@ Interface mod
 | no shutdown | Enable interface |
 | switchport mode vlan | Change interface mode to access port |
 | switchport access vlan {vlan\_id} | Change access port vlan to {vlan\_id}. vlan\_id must be a number between 1 and 4095 |
+| switchport mode trunk | Set interface in Vlan trunk mode |
+| switchport trunk vlans add {vlan} | Add allowed vlans for interface |
+| switchport trunk vlans remove {vlans} | Remove allowed vlans for interface |
 | switchport mode monitor {if\_name}| Configure interface to mirror egress on given port |
 | no switchport access vlan | Revert access port vlan to default (1) |
 | help | Display available commands |
@@ -112,7 +115,7 @@ Supported Features
 | Basic Port mirroring | X |
 | Advanced Port mirroring | |
 | Vlan mapping | |
-| 802.1q (Vlan) | WIP |
+| 802.1q (Vlan) | X |
 | 802.1ad (QinQ) | |
 | 802.1ab (LLDP) | |
 | 802.1ax (LACP) | |

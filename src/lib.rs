@@ -71,6 +71,7 @@ pub fn run_interface_worker<'a>(mut ing_intf: Interface<'a>, rx: Receiver<IntfCm
 
     // Control plane
     match rx.try_recv() {
+      // TODO Delete intf_view from collection on shutdown
       Ok(IntfCmd::Shutdown) => ing_intf.close(),
       Ok(IntfCmd::NoShutdown) => {
         if let Err(err) = ing_intf.open() {
@@ -84,6 +85,16 @@ pub fn run_interface_worker<'a>(mut ing_intf: Interface<'a>, rx: Receiver<IntfCm
         remove_monitoring_session(&ing_intf, &mirrors);
         ing_intf.set_port_mode_access_vlan(DEFAULT_VLAN)
       },
+      Ok(IntfCmd::PortModeTrunk) => {
+        ing_intf.set_port_mode_trunk_vlan()
+      },
+      Ok(IntfCmd::PortTrunkAddVlans(vlans)) => {
+        ing_intf.add_trunk_allowed_vlan(&vlans);
+      },
+      Ok(IntfCmd::PortTrunkRemoveVlans(vlans)) => {
+        ing_intf.remove_trunk_allowed_vlan(&vlans);
+      },
+      // TODO Delete intf_view from collection on monitoring
       Ok(IntfCmd::PortModeMonitoring(target)) => {
         // Remove eventual previous monitoring session
         remove_monitoring_session(&ing_intf, &mirrors);
@@ -104,15 +115,20 @@ pub fn run_interface_worker<'a>(mut ing_intf: Interface<'a>, rx: Receiver<IntfCm
     match ing_intf.receive() {
       Ok(Some(frame)) => {
 
-        fib.learn(frame.get_vlan(), &frame.src_mac, Arc::clone(&ing_intf.view));
-        if !frame.is_broadcast() &&
-          let Some(egr_intf) = fib.lookup(frame.get_vlan(), &frame.dst_mac) &&
-          egr_intf.is_up() && !egr_intf.is_monitoring() &&
-          egr_intf.allows_vlan(frame.get_vlan()) {
-          // Unicast
-          egr_process_and_send(&egr_intf, &frame, mirrors);
-        } else {
-          flood(&egr_intfs, &frame, &mirrors);
+        if let Some(frame) = ing_intf.ing_process_frame(frame.clone()) {
+          fib.learn(frame.get_vlan(), &frame.src_mac, Arc::clone(&ing_intf.view));
+
+          if !frame.is_broadcast() &&
+            let Some(egr_intf) = fib.lookup(frame.get_vlan(), &frame.dst_mac) &&
+            egr_intf.is_up() && !egr_intf.is_monitoring() &&
+            egr_intf.allows_vlan(frame.get_vlan()) {
+            // Unicast
+            egr_process_and_send(&egr_intf, &frame, mirrors);
+          } else {
+            flood(&egr_intfs, &frame, &mirrors);
+          }
+        } else { // frame dropped
+          continue
         }
       }
       Ok(None) => continue, // no data, timeout

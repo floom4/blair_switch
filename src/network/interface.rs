@@ -1,4 +1,5 @@
 use std::{fmt, io, mem};
+use std::collections::HashSet;
 use std::ffi::CString;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, BorrowedFd};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -35,12 +36,16 @@ pub enum IntfCmd {
   NoShutdown,
   PortModeAccess,
   PortModeMonitoring(String),
+  PortModeTrunk,
   PortAccessVlan(u16),
+  PortTrunkAddVlans(Vec<u16>),
+  PortTrunkRemoveVlans(Vec<u16>),
 }
 
 #[derive(Debug,Clone)]
 enum PortMode {
   Access { vlan: u16 },
+  Trunk { vlans: HashSet<u16>},
   Monitoring(String),
 }
 
@@ -137,10 +142,8 @@ impl Interface<'_> {
           }
         }
       }
-      let mut frame = Frame::parse(&buf, n as usize);
-      if let PortMode::Access{vlan} = self.view.intf_ro_data.load().mode {
-        frame.tag(vlan)
-      }
+      let frame = Frame::parse(&buf, n as usize);
+
       self.view.in_pkts.fetch_add(1, Ordering::Relaxed);
       self.view.in_bytes.fetch_add(n as u64, Ordering::Relaxed);
       if self.view.debug_mode.load(Ordering::Relaxed) {
@@ -150,6 +153,26 @@ impl Interface<'_> {
     } else {
       Err(io::Error::new(io::ErrorKind::BrokenPipe, "fd closed"))
     }
+  }
+
+  pub fn ing_process_frame(&self, mut frame: Frame) -> Option<Frame> {
+    match self.view.intf_ro_data.load().mode {
+      PortMode::Access{vlan} => {
+        if frame.get_vlan() != 0 {
+          dbg!("dropping because tagged on access");
+          return None; // Drop tagged frame
+        }
+        frame.tag(vlan);
+      },
+      PortMode::Trunk{ref vlans} => {
+        let vlan = frame.get_vlan();
+        if vlan == 0 || !vlans.contains(&vlan) {
+          return None; // Drop untagged & bad vlan frame
+        }
+      }
+      PortMode::Monitoring(_) => return None, // Drop ingress on monitoring ports
+    }
+    Some(frame)
   }
 
   pub fn is_up(&self) -> bool {
@@ -174,6 +197,38 @@ impl Interface<'_> {
     let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
     intf_ro_data.mode = PortMode::Access{vlan: vlan};
     self.view.intf_ro_data.store(Arc::new(intf_ro_data));
+  }
+
+  pub fn set_port_mode_trunk_vlan(&self) {
+    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
+    intf_ro_data.mode = PortMode::Trunk{vlans: HashSet::new()};
+    self.view.intf_ro_data.store(Arc::new(intf_ro_data));
+  }
+
+  pub fn add_trunk_allowed_vlan(&self, vlans: &Vec<u16>) {
+    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
+    debug_assert!(vlans.into_iter().all(| x | *x > 0 && *x < 4096));
+    if let PortMode::Trunk{vlans: ref mut allowed_vlans} = intf_ro_data.mode  {
+      for vlan in vlans {
+        allowed_vlans.insert(*vlan);
+      }
+      self.view.intf_ro_data.store(Arc::new(intf_ro_data));
+    } else {
+      debug_assert!(false);
+    }
+  }
+
+  pub fn remove_trunk_allowed_vlan(&self, vlans: &Vec<u16>) {
+    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
+    debug_assert!(vlans.into_iter().all(| x | *x > 0 && *x < 4096));
+    if let PortMode::Trunk{vlans: ref mut allowed_vlans} = intf_ro_data.mode  {
+      for vlan in vlans {
+        allowed_vlans.remove(vlan);
+      }
+      self.view.intf_ro_data.store(Arc::new(intf_ro_data));
+    } else {
+      debug_assert!(false);
+    }
   }
 }
 
@@ -239,6 +294,7 @@ impl InterfaceView<'_> {
   pub fn allows_vlan(&self, vlan: u16) -> bool {
     match &self.intf_ro_data.load().mode {
       PortMode::Access{vlan: port_vlan} => *port_vlan == vlan,
+      PortMode::Trunk{vlans} => vlans.contains(&vlan),
       PortMode::Monitoring(_) => panic!("Unexpected path")
     }
   }
@@ -261,14 +317,18 @@ impl fmt::Display for InterfaceView<'_> {
       if let Some(_) = &ro_data.fd { "running" } else { "shutdown" },
       match ro_data.mode {
         PortMode::Access{..} => "Access",
+        PortMode::Trunk{..} => "Trunk",
         PortMode::Monitoring(_) => "Monitoring",
       }
     );
 
-    if let PortMode::Access{vlan} = ro_data.mode {
+    if let PortMode::Access{vlan} = &ro_data.mode {
       output += &format!("Vlan: {}\n", vlan);
     }
-    if let PortMode::Monitoring(ref target) = ro_data.mode {
+    if let PortMode::Trunk{vlans} = &ro_data.mode {
+      output += &format!("Allowed Vlans: {:?}\n", vlans);
+    }
+    if let PortMode::Monitoring(target) = &ro_data.mode {
       output += &format!("Monitoring: {}\n", target);
     }
 

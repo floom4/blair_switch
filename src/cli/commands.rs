@@ -170,6 +170,39 @@ pub const INTF_COMMANDS: &[Command] = &[
     }
   },
   Command {
+    pattern: &["switchport", "mode", "trunk"],
+    description: "Set interface in Vlan trunk mode",
+    handler: | _, _, _, intf, _, _ | {
+      intf.send_cmd(IntfCmd::PortModeTrunk)
+    }
+  },
+  Command {
+    pattern: &["switchport", "trunk", "vlans", "add", "<vlan>"],
+    description: "Add allowed vlans for interface",
+    handler: | _, _, _, intf, _, args | {
+      // TODO throw error on wrong switchport mode
+      let vlan_str = &args["vlan"];
+      match vlan_str.parse::<u16>() {
+        Ok(vlan) => {
+          if vlan > 0 && vlan < 4096 {
+            intf.send_cmd(IntfCmd::PortTrunkAddVlans(vec!(vlan)));
+          } else {
+            eprintln!("Error: invalid vlan \"{}\". Must be between 1 and 4095", vlan_str);
+          }
+        },
+        Err(_) => eprintln!("Error: invalid vlan format \"{}\". Must be number between 1 and 4095", vlan_str),
+      }
+    }
+  },
+  Command {
+    pattern: &["switchport", "trunk", "vlans", "remove", "<vlans>"],
+    description: "Remove allowed vlans for interface",
+    handler: | _, _, _, intf, _, _ | {
+      // TODO throw error on wrong switchport mode
+      intf.send_cmd(IntfCmd::PortModeTrunk)
+    }
+  },
+  Command {
     pattern: &["switchport", "mode", "monitor", "<target_intf>"],
     description: "Set interface in monitor mode to mirror traffic from target interfaces",
     handler: | intfs_view, _, _, intf, _, args | {

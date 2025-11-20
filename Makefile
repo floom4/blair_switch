@@ -4,13 +4,13 @@ build:
 	cargo build
 
 init:
-	sudo scripts/init-topology host1 host2 host3 host4
+	sudo scripts/init-topology host1 host2 host3 host4 host5
 
 run: build
-	sudo scripts/host-exec sw ${BIN} if1-sw if2-sw if3-sw if4-sw
+	sudo scripts/host-exec sw ${BIN} if1-sw if2-sw if3-sw if4-sw if5-sw
 
 debug: build
-	sudo scripts/host-exec sw "RUST_BACKTRACE=1 ${BIN} if1-sw if2-sw if3-sw if4-sw"
+	sudo scripts/host-exec sw "RUST_BACKTRACE=1 ${BIN} if1-sw if2-sw if3-sw if4-sw if5-sw"
 
 test:
 	sudo ./tests/basic_test.py
