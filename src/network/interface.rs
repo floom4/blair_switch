@@ -1,13 +1,15 @@
-use std::{fmt, io, mem};
+use std::{ffi, fmt, io, mem};
 use std::collections::HashSet;
 use std::ffi::CString;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, BorrowedFd};
+use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use arc_swap::ArcSwap;
 use crossbeam_channel::Sender;
 
+use libc;
 use libc::{
   close,
   c_void,
@@ -20,9 +22,12 @@ use libc::{
   sockaddr,
   sockaddr_ll,
   timeval,
+  tpacket_auxdata,
   AF_PACKET,
   ETH_P_ALL,
+  PACKET_AUXDATA,
   SOCK_RAW,
+  SOL_PACKET,
   SOL_SOCKET,
   SO_RCVTIMEO,
 };
@@ -98,15 +103,19 @@ impl Interface<'_> {
     addr.sll_family = AF_PACKET as u16;
     addr.sll_protocol = (ETH_P_ALL as u16).to_be();
     addr.sll_ifindex = self.if_index as i32;
+    let packet_auxdata = 1;
     unsafe {
       if bind(fd, &addr as *const _ as *const sockaddr, mem::size_of::<sockaddr_ll>() as u32) < 0 {
           let e = io::Error::last_os_error();
           close(fd);
           return Err(e);
       }
-    }
-    unsafe {
       if setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout as *const _ as *const c_void, size_of::<timeval>() as u32) < 0 {
+        let e = io::Error::last_os_error();
+        close(fd);
+        return Err(e);
+      }
+      if setsockopt(fd, SOL_PACKET, PACKET_AUXDATA, &packet_auxdata as *const _ as *const c_void, size_of::<u32>() as u32) < 0 {
         let e = io::Error::last_os_error();
         close(fd);
         return Err(e);
@@ -128,9 +137,19 @@ impl Interface<'_> {
 
   pub fn receive(&self) -> io::Result<Option<Frame>> {
     // TODO handle frame bigger than buffer
-    let mut buf = vec![0; 4096];
+    let mut buf : Vec<u8> = vec![0; 4096];
+    let mut ctrl_msg : Vec<u8> = unsafe { vec![0; libc::CMSG_SPACE(500) as usize] };
+    let mut msghdr : libc::msghdr = unsafe { mem::zeroed() };
+    let iov = [
+      std::io::IoSliceMut::new(&mut buf),
+    ];
+    msghdr.msg_iov = iov.as_ptr() as *mut libc::iovec;
+    msghdr.msg_iovlen = iov.len();
+    msghdr.msg_control = ctrl_msg.as_ptr() as *mut c_void;
+    msghdr.msg_controllen = ctrl_msg.len();
+
     if let Some(fd) = &self.fd {
-      let n = unsafe { recv(fd.as_raw_fd(), buf.as_mut_ptr() as *mut _, buf.len(), 0) };
+      let n = unsafe { libc::recvmsg(fd.as_raw_fd(), &mut msghdr as *mut libc::msghdr, 0) };
       if n <= 0 {
         let err = io::Error::last_os_error();
         match err.kind() {
@@ -142,7 +161,24 @@ impl Interface<'_> {
           }
         }
       }
-      let frame = Frame::parse(&buf, n as usize);
+
+      let mut aux_data = None;
+      let mut cmsg = unsafe { libc::CMSG_FIRSTHDR(&mut msghdr as *mut libc::msghdr) };
+      while !cmsg.is_null() {
+        unsafe {
+          if (*cmsg).cmsg_level != SOL_PACKET ||
+            (*cmsg).cmsg_type != PACKET_AUXDATA {
+            cmsg = libc::CMSG_NXTHDR(&msghdr as *const libc::msghdr, cmsg);
+            continue;
+          }
+        }
+
+        let auxdata = unsafe { libc::CMSG_DATA(cmsg) as *const tpacket_auxdata };
+        aux_data = unsafe { Some(*auxdata) };
+        break;
+      }
+
+      let frame = Frame::parse(&buf, n as usize, aux_data);
 
       self.view.in_pkts.fetch_add(1, Ordering::Relaxed);
       self.view.in_bytes.fetch_add(n as u64, Ordering::Relaxed);
@@ -159,14 +195,24 @@ impl Interface<'_> {
     match self.view.intf_ro_data.load().mode {
       PortMode::Access{vlan} => {
         if frame.get_vlan() != 0 {
-          dbg!("dropping because tagged on access");
+          if self.view.debug_mode.load(Ordering::Relaxed) {
+            println!("Dropping tagged frame ingressing on access port");
+          }
           return None; // Drop tagged frame
         }
         frame.tag(vlan);
       },
       PortMode::Trunk{ref vlans} => {
         let vlan = frame.get_vlan();
-        if vlan == 0 || !vlans.contains(&vlan) {
+        if vlan == 0 {
+          if self.view.debug_mode.load(Ordering::Relaxed) {
+            println!("Dropping untagged frame ingressing on trunk port");
+          }
+          return None; // Drop untagged & bad vlan frame
+        } else if !vlans.contains(&vlan) {
+          if self.view.debug_mode.load(Ordering::Relaxed) {
+            println!("Dropping frame taggued {} ingressing on trunk port allowing {:?}", vlan, vlans);
+          }
           return None; // Drop untagged & bad vlan frame
         }
       }

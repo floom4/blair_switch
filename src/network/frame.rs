@@ -1,4 +1,6 @@
 use std::fmt;
+use std::option::Option;
+
 use macaddr::MacAddr6;
 
 #[derive(Debug,Clone)]
@@ -15,7 +17,7 @@ impl Tag {
     Tag{tpid: tpid, tci: tci}
   }
 
-  pub fn build(pcp : u8, dei: bool, vlan: u16) -> Tag {
+  pub fn build(pcp : u8, dei: bool, vlan: u16) -> Self {
     debug_assert!(vlan < 4096);
     let mut tci = 0 as u16;
     tci |= (pcp as u16) << 13;
@@ -25,9 +27,13 @@ impl Tag {
     tci |= vlan;
     Tag{tpid: 0x8100, tci: tci}
   }
+
+  pub fn build_from_u16(tpid : u16, tci: u16) -> Self {
+    Tag{tpid, tci}
+  }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Frame {
   pub dst_mac: MacAddr6,
   pub src_mac: MacAddr6,
@@ -37,7 +43,7 @@ pub struct Frame {
 }
 
 impl Frame {
-  pub fn parse(bytes: &[u8], size: usize) -> Frame {
+  pub fn parse(bytes: &[u8], size: usize, aux_data: Option<libc::tpacket_auxdata>) -> Frame {
     if size < 13 {
       panic!("Array too small to contain valid frame")
     }
@@ -46,10 +52,12 @@ impl Frame {
     let mut ether_type = ((bytes[12] as u16) << 8) | bytes[13] as u16;
     let mut cursor = 14;
     let mut tag = None;
-    if ether_type == 0x8100 { // dot1q handling
+    if ether_type == 0x8100 { // inline dot1q handling
       tag = Some(Tag::parse(&bytes[12..16]));
       ether_type = ((bytes[16] as u16) << 8) | bytes[17] as u16;
       cursor = 18;
+    } else if let Some(aux_data) = aux_data { // offloaded dot1q handling
+      tag = Some(Tag::build_from_u16(aux_data.tp_vlan_tpid, aux_data.tp_vlan_tci));
     }
     let data = bytes[cursor..size].to_vec();
 
