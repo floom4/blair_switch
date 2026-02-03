@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import select
 import subprocess
 import time
 import textwrap
@@ -20,18 +21,45 @@ hosts = [
   Host("host4", "if4-host4", "dd:dd:dd:dd:dd:dd", "192.168.10.14"),
 ]
 
-def start_switch():
-  cmd = ["sudo", "scripts/host-exec", "sw", "target/debug/blair_switch" ]
-  for host in hosts[1:]:
-    cmd.append(host.iface.split('-')[0] + "-sw")
-  p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-  return p
 
 def run_cmd(cmd):
   subprocess.run(cmd, shell=True, check=True)
 
 def run_cmd_on_host(host, cmd):
   run_cmd("sudo scripts/host-exec " + host + " " + cmd)
+
+class Switch:
+  def __init__(self):
+    cmd = ["sudo", "scripts/host-exec", "sw", "target/debug/blair_switch" ]
+    for host in hosts[1:]:
+      cmd.append(host.iface.split('-')[0] + "-sw")
+    self.process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    #return p
+
+  def send_cmd(self, cmd):
+    self.process.stdin.write(cmd.strip() + "\n")
+    self.process.stdin.flush()
+
+  def read_output(self):
+    timeout = 0.1
+    output = ""
+
+    while True:
+      r, _, _ = select.select([self.process.stdout], [], [], timeout)
+      if r:
+        chunk = self.process.stdout.buffer.read1(4096)
+        if not chunk:
+          break
+        output += chunk.decode('utf-8')
+      else:
+        break
+
+    return output
+
+  def terminate(self):
+    self.process.stdin.close()
+    self.process.terminate()
+    self.process.wait(timeout=0.2)
 
 
 class Receiver:
