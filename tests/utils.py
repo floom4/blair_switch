@@ -16,10 +16,10 @@ class Host:
 hosts = [
   None,
   Host("host1", "if1-host1", "aa:aa:aa:aa:aa:aa", "192.168.10.11"),
-  Host("host2", "if2-host2", "bb:bb:bb:bb:bb:bb", "192.168.10.12"),
-  Host("host3", "if3-host3", "cc:cc:cc:cc:cc:cc", "192.168.10.13"),
-  Host("host4", "if4-host4", "dd:dd:dd:dd:dd:dd", "192.168.10.14"),
-  Host("host5", "if5-host5", "ee:ee:ee:ee:ee:ee", "192.168.10.15"),
+  Host("host2", "if2-host2", "aa:aa:aa:aa:aa:bb", "192.168.10.12"),
+  Host("host3", "if3-host3", "aa:aa:aa:aa:aa:cc", "192.168.10.13"),
+  Host("host4", "if4-host4", "aa:aa:aa:aa:aa:dd", "192.168.10.14"),
+  Host("host5", "if5-host5", "aa:aa:aa:aa:aa:ee", "192.168.10.15"),
 ]
 
 
