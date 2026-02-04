@@ -88,7 +88,8 @@ class Receiver:
       assert(False)
     print(f"{self.interface}@{self.host.name} OK")
 
-def send_frame(host, data, vlan=None):
+def send_frame(host, frame, vlan=None):
+  data = raw(frame).hex()
   interface=host.iface
   if vlan:
     interface += f".{vlan}"
@@ -102,7 +103,8 @@ sendp(frame, iface="{interface}")
 """
   run_cmd_on_host(host.name, f"python3 - <<'PY'\n{script}\nPY")
 
-def expect_frame(host, expected_bytes, timeout = 5, failure=False, vlan=None):
+def expect_frame(host, frame, timeout = 5, failure=False, vlan=None):
+  expected_bytes = raw(frame).hex()
   interface=host.iface
   if vlan:
     interface += f".{vlan}"
