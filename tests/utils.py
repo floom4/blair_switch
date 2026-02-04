@@ -19,6 +19,7 @@ hosts = [
   Host("host2", "if2-host2", "bb:bb:bb:bb:bb:bb", "192.168.10.12"),
   Host("host3", "if3-host3", "cc:cc:cc:cc:cc:cc", "192.168.10.13"),
   Host("host4", "if4-host4", "dd:dd:dd:dd:dd:dd", "192.168.10.14"),
+  Host("host5", "if5-host5", "ee:ee:ee:ee:ee:ee", "192.168.10.15"),
 ]
 
 
@@ -39,6 +40,9 @@ class Switch:
   def send_cmd(self, cmd):
     self.process.stdin.write(cmd.strip() + "\n")
     self.process.stdin.flush()
+
+  def send_cmds(self, cmds):
+    self.send_cmd('\n'.join(cmds))
 
   def read_output(self):
     timeout = 0.1
@@ -63,8 +67,11 @@ class Switch:
 
 
 class Receiver:
-  def __init__(self, host, expected, failure, process):
+  def __init__(self, host, vlan, expected, failure, process):
     self.host = host
+    self.interface = self.host.iface
+    if vlan:
+      self.interface += f".{vlan}"
     self.expected = expected
     self.process = process
     self.failure = failure
@@ -79,23 +86,32 @@ class Receiver:
       print("==== STDOUT =====\n", stdout)
       print("==== STDERR =====\n", stderr)
       assert(False)
-    print(f"{self.host.iface}@{self.host.name} OK")
+    print(f"{self.interface}@{self.host.name} OK")
 
-def send_frame(host, data):
+def send_frame(host, data, vlan=None):
+  interface=host.iface
+  if vlan:
+    interface += f".{vlan}"
+
   time.sleep(1) #Wait for all receiver to be setup
+
   script = f"""
 from scapy.all import sendp
 frame = bytes.fromhex("{data}")
-sendp(frame, iface="{host.iface}")
+sendp(frame, iface="{interface}")
 """
   run_cmd_on_host(host.name, f"python3 - <<'PY'\n{script}\nPY")
 
-def expect_frame(host, expected_bytes, timeout = 5, failure=False):
+def expect_frame(host, expected_bytes, timeout = 5, failure=False, vlan=None):
+  interface=host.iface
+  if vlan:
+    interface += f".{vlan}"
+
   script = f"""
 from scapy.all import sniff
 import sys, binascii
 exp = binascii.unhexlify("{expected_bytes}")
-frames = sniff(iface="{host.iface}", timeout={timeout}, stop_filter=lambda frame : bytes(frame) == exp, count=0)
+frames = sniff(iface="{interface}", timeout={timeout}, stop_filter=lambda frame : bytes(frame) == exp, count=0)
 if not len(frames):
   print("No packets received")
   sys.exit(1)
@@ -107,4 +123,4 @@ sys.exit(0)
   """
   p = subprocess.Popen(
       f"sudo scripts/host-exec {host.name} python3 - << 'PY'\n{script}\nPY", stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
-  return Receiver(host, expected_bytes, failure, p)
+  return Receiver(host, vlan, expected_bytes, failure, p)

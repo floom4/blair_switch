@@ -1,5 +1,9 @@
 #!/bin/sh
 
+function exec_on_vm() {
+  ip netns exec host5 capsh --caps="cap_net_admin,cap_net_raw+eip cap_setpcap,cap_setuid,cap_setgid+ep" --keep=1 --user=$(logname) --addamb="cap_net_admin,cap_net_raw" -- -c "$@"
+}
+
 if [[ "${EUID}" -ne 0 ]]; then
   echo "This command need to be run as root."
   exit 1
@@ -50,3 +54,11 @@ for host in "$@"; do
   echo "Add ip 192.168.10.1${i} to ${HOST_IF}@${host}"
   i=$((i+1))
 done
+
+exec_on_vm "ip addr del 192.168.10.15/24 dev if5-host5"
+exec_on_vm "ip link add name if5-host5.42 link if5-host5 type vlan id 42"
+exec_on_vm "ip link add name if5-host5.33 link if5-host5 type vlan id 33"
+exec_on_vm "ip link set up dev if5-host5.33"
+exec_on_vm "ip link set up dev if5-host5.42"
+exec_on_vm "ip addr add 192.168.10.33/24 dev if5-host5.33"
+exec_on_vm "ip addr add 192.168.11.42/24 dev if5-host5.42"
