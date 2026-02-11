@@ -141,6 +141,21 @@ send_frame(hosts[5], frame, vlan=33)
 
 for exp in exps:
   exp.receive()
+
+print("\nTest other trunk vlan works after removal of one")
+exps = [
+ expect_frame(hosts[1], frame, failure=True),
+ expect_frame(hosts[2], frame),
+ expect_frame(hosts[3], frame, failure=True),
+ expect_frame(hosts[4], frame, failure=True),
+ expect_frame(hosts[5], frame, vlan=33, failure=True)
+]
+
+send_frame(hosts[5], frame, vlan=42)
+
+for exp in exps:
+  exp.receive()
+
 time.sleep(1)
 switch.send_cmd("show interfaces\nshow fib")
 print(switch.read_output())
