@@ -5,6 +5,7 @@ import subprocess
 import time
 import textwrap
 from scapy.all import ARP, Ether, IP, ICMP, raw
+from inspect import cleandoc
 
 class Host:
   def __init__(self, name, iface, mac, ip):
@@ -35,7 +36,6 @@ class Switch:
     for host in hosts[1:]:
       cmd.append(host.iface.split('-')[0] + "-sw")
     self.process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-    #return p
 
   def send_cmd(self, cmd):
     self.process.stdin.write(cmd.strip() + "\n")
@@ -96,11 +96,11 @@ def send_frame(host, frame, vlan=None):
 
   time.sleep(1) #Wait for all receiver to be setup
 
-  script = f"""
-from scapy.all import sendp
-frame = bytes.fromhex("{data}")
-sendp(frame, iface="{interface}")
-"""
+  script = cleandoc(f"""
+    from scapy.all import sendp
+    frame = bytes.fromhex("{data}")
+    sendp(frame, iface="{interface}")
+  """)
   run_cmd_on_host(host.name, f"python3 - <<'PY'\n{script}\nPY")
 
 def expect_frame(host, frame, timeout = 5, failure=False, vlan=None):
@@ -109,20 +109,22 @@ def expect_frame(host, frame, timeout = 5, failure=False, vlan=None):
   if vlan:
     interface += f".{vlan}"
 
-  script = f"""
-from scapy.all import sniff
-import sys, binascii
-exp = binascii.unhexlify("{expected_bytes}")
-frames = sniff(iface="{interface}", timeout={timeout}, stop_filter=lambda frame : bytes(frame) == exp, count=0)
-if not len(frames):
-  print("No packets received")
-  sys.exit(1)
-if bytes(frames[-1]) != exp:
-  for frame in frames:
-    print(frame)
-  sys.exit(1)
-sys.exit(0)
-  """
+  script = cleandoc(f"""
+    from scapy.all import sniff
+    import sys, binascii
+    exp = binascii.unhexlify("{expected_bytes}")
+    frames = sniff(iface="{interface}", timeout={timeout},
+      stop_filter=lambda frame : bytes(frame) == exp, count=0)
+    if not len(frames):
+      print("No packets received")
+      sys.exit(1)
+    if bytes(frames[-1]) != exp:
+      for frame in frames:
+        print(frame)
+      sys.exit(1)
+    sys.exit(0)
+  """)
   p = subprocess.Popen(
-      f"sudo scripts/host-exec {host.name} python3 - << 'PY'\n{script}\nPY", stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
+      f"sudo scripts/host-exec {host.name} python3 - << 'PY'\n{script}\nPY",
+      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
   return Receiver(host, vlan, expected_bytes, failure, p)

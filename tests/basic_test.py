@@ -121,7 +121,27 @@ send_frame(hosts[1], frame)
 for exp in exps:
   exp.receive()
 
+print("\nTest Vlan Trunk with wrong Vlan tag")
+switch.send_cmds([
+  "interface if5-sw",
+  "switchport trunk vlans remove 33",
+  "exit",
+])
 
+frame = Ether(src=hosts[5].mac, dst="ff:ff:ff:ff:ff:ff")/ARP(hwsrc=hosts[5].mac, hwdst="00:00:00:00:00:00", pdst=hosts[1].ip, psrc=hosts[5].ip)
+exps = [
+ expect_frame(hosts[1], frame, failure=True),
+ expect_frame(hosts[2], frame, failure=True),
+ expect_frame(hosts[3], frame, failure=True),
+ expect_frame(hosts[4], frame, failure=True),
+ expect_frame(hosts[5], frame, vlan=42, failure=True)
+]
+
+send_frame(hosts[5], frame, vlan=33)
+
+for exp in exps:
+  exp.receive()
+time.sleep(1)
 switch.send_cmd("show interfaces\nshow fib")
 print(switch.read_output())
 
