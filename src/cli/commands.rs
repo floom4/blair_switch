@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 
 use crate::fib::Fib;
-use crate::network::interface::{InterfaceView, IntfCmd};
+use crate::network::interface::{InterfaceView, IntfCmd, PortMode};
 use super::shell::{CliMode, IntfsViewMap};
 
 pub struct Command<'a> {
@@ -183,7 +183,11 @@ pub const INTF_COMMANDS: &[Command] = &[
     pattern: &["switchport", "trunk", "vlans", "add", "<vlan>"],
     description: "Add allowed vlans for interface",
     handler: | _, _, _, intf, _, args | {
-      // TODO throw error on wrong switchport mode
+      let mode = intf.get_port_mode();
+      let PortMode::Trunk{..} = mode else {
+        eprintln!("Error: invalid switchport mode \"{}\". Interface must be in trunk mode", mode);
+        return
+      };
       let vlan_str = &args["vlan"];
       match vlan_str.parse::<u16>() {
         Ok(vlan) => {
@@ -201,20 +205,38 @@ pub const INTF_COMMANDS: &[Command] = &[
     pattern: &["switchport", "trunk", "vlans", "remove", "<vlans>"],
     description: "Remove allowed vlans for interface",
     handler: | _, fib, _, intf, _, args | {
-      // TODO throw error on wrong switchport mode
-      // TODO throw error on vlan not in trunk port
+      let mode = intf.get_port_mode();
+      let PortMode::Trunk{vlans: allowed_vlans} = mode else {
+        eprintln!("Error: invalid switchport mode \"{}\". Interface must be in trunk mode", mode);
+        return
+      };
       let vlan_str = &args["vlans"];
       match vlan_str.parse::<u16>() {
         Ok(vlan) => {
-          if vlan > 0 && vlan < 4096 {
+          if vlan < 1 || vlan > 4095 {
+            eprintln!("Error: invalid vlan \"{}\". Must be between 1 and 4095", vlan_str);
+          } else if !allowed_vlans.contains(&vlan) {
+            eprintln!("Error: trunk port does not allow vlan \"{}\". Allowed vlans {:?}", vlan_str, allowed_vlans);
+          } else {
             intf.send_cmd(IntfCmd::PortTrunkRemoveVlans(vec!(vlan)));
             fib.remove_intf_vlan_entries(intf.name.clone(), vlan);
-          } else {
-            eprintln!("Error: invalid vlan \"{}\". Must be between 1 and 4095", vlan_str);
           }
         }
         Err(_) => eprintln!("Error: invalid vlan format \"{}\". Must be number between 1 and 4095", vlan_str),
       }
+    }
+  },
+  Command {
+    pattern: &["no", "switchport", "trunk", "vlans"],
+    description: "Remove allowed vlans for interface",
+    handler: | _, fib, _, intf, _, _ | {
+      let mode = intf.get_port_mode();
+      let PortMode::Trunk{..} = mode else {
+        eprintln!("Error: invalid switchport mode \"{}\". Interface must be in trunk mode", mode);
+        return
+      };
+      intf.send_cmd(IntfCmd::PortModeTrunk);
+      fib.remove_intf_entries(intf.name.clone());
     }
   },
   Command {
@@ -233,6 +255,11 @@ pub const INTF_COMMANDS: &[Command] = &[
     pattern: &["switchport", "access", "vlan", "<vlan>"],
     description: "Set vlan group for interface",
     handler: | _, fib, _, intf, _, args | {
+      let mode = intf.get_port_mode();
+      let PortMode::Access{..} = mode else {
+        eprintln!("Error: invalid switchport mode \"{}\". Interface must be in access mode", mode);
+        return
+      };
       let vlan_str = &args["vlan"];
       match vlan_str.parse::<u16>() {
         Ok(vlan) => {

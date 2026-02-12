@@ -42,7 +42,9 @@ class Switch:
     self.process.stdin.flush()
 
   def send_cmds(self, cmds):
-    self.send_cmd('\n'.join(cmds))
+    for cmd in cmds:
+      self.send_cmd(cmd)
+      time.sleep(0.15)
 
   def read_output(self):
     timeout = 0.1

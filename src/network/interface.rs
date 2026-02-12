@@ -48,7 +48,7 @@ pub enum IntfCmd {
 }
 
 #[derive(Debug,Clone)]
-enum PortMode {
+pub enum PortMode {
   Access { vlan: u16 },
   Trunk { vlans: HashSet<u16>},
   Monitoring(String),
@@ -316,6 +316,10 @@ impl InterfaceView<'_> {
     self.intf_ro_data.load().fd.is_some() 
   }
 
+  pub fn get_port_mode(&self) -> PortMode {
+    self.intf_ro_data.load().as_ref().clone().mode
+  }
+
   pub fn is_monitoring(&self) -> bool {
     matches!( self.intf_ro_data.load().mode, PortMode::Monitoring(_))
   }
@@ -383,5 +387,16 @@ impl fmt::Display for InterfaceView<'_> {
       self.in_pkts.load(Ordering::Relaxed), self.out_pkts.load(Ordering::Relaxed),
       self.in_bytes.load(Ordering::Relaxed), self.out_bytes.load(Ordering::Relaxed));
     write!(f, "{}", output)
+  }
+}
+
+impl fmt::Display for PortMode {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{}",
+    match self {
+      PortMode::Access{..} => "access",
+      PortMode::Trunk{..} => "trunk",
+      PortMode::Monitoring(_) => "monitoring",
+    })
   }
 }

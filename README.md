@@ -70,6 +70,8 @@ blair-switch# debug // Enabling debug mod on all interfaces
 blair-switch# no debug // Disabling debug mod on all interfaces
 ```
 
+Auto-complete as well as a listing of available commands is available when pressing tab.
+
 General mod
 -----------
 
@@ -100,6 +102,7 @@ Interface mod
 | switchport mode trunk | Set interface in Vlan trunk mode |
 | switchport trunk vlans add {vlan} | Add allowed vlans for interface |
 | switchport trunk vlans remove {vlans} | Remove allowed vlans for interface |
+| no switchport trunk vlans | Remove all allowed vlans for interface |
 | switchport mode monitor {if\_name}| Configure interface to mirror egress on given port |
 | no switchport access vlan | Revert access port vlan to default (1) |
 | help | Display available commands |
