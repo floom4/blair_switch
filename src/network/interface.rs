@@ -30,6 +30,7 @@ use libc::{
   SOL_PACKET,
   SOL_SOCKET,
   SO_RCVTIMEO,
+  TP_STATUS_VLAN_VALID,
 };
 
 use super::frame::Frame;
@@ -171,11 +172,13 @@ impl Interface<'_> {
             cmsg = libc::CMSG_NXTHDR(&msghdr as *const libc::msghdr, cmsg);
             continue;
           }
-        }
 
-        let auxdata = unsafe { libc::CMSG_DATA(cmsg) as *const tpacket_auxdata };
-        aux_data = unsafe { Some(*auxdata) };
-        break;
+          let auxdata = libc::CMSG_DATA(cmsg) as *const tpacket_auxdata;
+          if auxdata != std::ptr::null() && (*auxdata).tp_status & TP_STATUS_VLAN_VALID > 0 {
+            aux_data = Some(*auxdata);
+          }
+          break;
+        }
       }
 
       let frame = Frame::parse(&buf, n as usize, aux_data);
