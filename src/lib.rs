@@ -85,6 +85,12 @@ pub fn run_interface_worker<'a>(mut ing_intf: Interface<'a>, rx: Receiver<IntfCm
         remove_monitoring_session(&ing_intf, &mirrors);
         ing_intf.set_port_mode_access_vlan(DEFAULT_VLAN)
       },
+      Ok(IntfCmd::PortModeVlanTunnel) => {
+        ing_intf.set_port_mode_vlan_tunnel(DEFAULT_VLAN)
+      },
+      Ok(IntfCmd::PortModeVlanTunnelSetVlan(vlan)) => {
+        ing_intf.set_port_mode_vlan_tunnel(vlan)
+      },
       Ok(IntfCmd::PortModeTrunk) => {
         ing_intf.set_port_mode_trunk_vlan()
       },

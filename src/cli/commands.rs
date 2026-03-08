@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 
 use crate::fib::Fib;
-use crate::network::interface::{InterfaceView, IntfCmd, PortMode};
+use crate::network::interface::{InterfaceView, IntfCmd, PortMode, DEFAULT_VLAN};
 use super::shell::{CliMode, IntfsViewMap};
 
 pub struct Command<'a> {
@@ -78,6 +78,7 @@ pub const GENERAL_COMMANDS: &[Command] = &[
     description: "Display current running configuration",
     handler: | _, _, _, _, config, _ | {
       //TODO
+      todo!()
       //print!("{}", config_to_str(config))
     },
   },
@@ -172,6 +173,14 @@ pub const INTF_COMMANDS: &[Command] = &[
     }
   },
   Command {
+    pattern: &["switchport", "mode", "dot1q-tunnel"],
+    description: "Set interface in vlan tunneling mode",
+    handler: | _, fib, _, intf, _, _ | {
+      intf.send_cmd(IntfCmd::PortModeVlanTunnel);
+      fib.remove_intf_entries(intf.name.clone());
+    }
+  },
+  Command {
     pattern: &["switchport", "mode", "trunk"],
     description: "Set interface in Vlan trunk mode",
     handler: | _, fib, _, intf, _, _ | {
@@ -255,18 +264,17 @@ pub const INTF_COMMANDS: &[Command] = &[
     pattern: &["switchport", "access", "vlan", "<vlan>"],
     description: "Set vlan group for interface",
     handler: | _, fib, _, intf, _, args | {
-      let mode = intf.get_port_mode();
-      let PortMode::Access{..} = mode else {
-        eprintln!("Error: invalid switchport mode \"{}\". Interface must be in access mode", mode);
-        return
-      };
       let vlan_str = &args["vlan"];
       match vlan_str.parse::<u16>() {
         Ok(vlan) => {
           if vlan > 0 && vlan < 4096 {
-            intf.send_cmd(IntfCmd::PortAccessVlan(vlan));
+            let mode = intf.get_port_mode();
+            match mode {
+            PortMode::Access{..} => intf.send_cmd(IntfCmd::PortAccessVlan(vlan)),
+            PortMode::VlanTunnel{..} => intf.send_cmd(IntfCmd::PortModeVlanTunnelSetVlan(vlan)),
+            _ => eprintln!("Error: invalid switchport mode \"{}\". Interface must be in access or vlan tunnel mode", mode),
+            }
             fib.remove_intf_entries(intf.name.clone());
-            //config.entry(mode.clone()).or_insert(HashSet::new()).insert(cmd.clone());
           } else {
             eprintln!("Error: invalid vlan \"{}\". Must be between 1 and 4095", vlan_str);
           }

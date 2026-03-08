@@ -41,6 +41,8 @@ pub enum IntfCmd {
   Shutdown,
   NoShutdown,
   PortModeAccess,
+  PortModeVlanTunnel,
+  PortModeVlanTunnelSetVlan(u16),
   PortModeMonitoring(String),
   PortModeTrunk,
   PortAccessVlan(u16),
@@ -51,6 +53,7 @@ pub enum IntfCmd {
 #[derive(Debug,Clone)]
 pub enum PortMode {
   Access { vlan: u16 },
+  VlanTunnel { service_vlan: u16 },
   Trunk { vlans: HashSet<u16>},
   Monitoring(String),
 }
@@ -219,6 +222,9 @@ impl Interface<'_> {
           return None; // Drop untagged & bad vlan frame
         }
       }
+      PortMode::VlanTunnel{service_vlan} => {
+        frame.tag(service_vlan);
+      }
       PortMode::Monitoring(_) => return None, // Drop ingress on monitoring ports
     }
     Some(frame)
@@ -245,6 +251,13 @@ impl Interface<'_> {
     debug_assert!(vlan > 0 && vlan < 4096);
     let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
     intf_ro_data.mode = PortMode::Access{vlan: vlan};
+    self.view.intf_ro_data.store(Arc::new(intf_ro_data));
+  }
+
+  pub fn set_port_mode_vlan_tunnel(&self, vlan: u16) {
+    debug_assert!(vlan > 0 && vlan < 4096);
+    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
+    intf_ro_data.mode = PortMode::VlanTunnel{service_vlan: vlan};
     self.view.intf_ro_data.store(Arc::new(intf_ro_data));
   }
 
@@ -308,9 +321,17 @@ impl InterfaceView<'_> {
   }
 
   pub fn egr_process_frame(&self, mut frame: Frame) -> Frame {
-     if let PortMode::Access{vlan} = self.intf_ro_data.load().mode {
+     match self.intf_ro_data.load().mode {
+      PortMode::Access{vlan} => {
        debug_assert!(vlan == frame.get_vlan()); //vlan should be checked before
        frame.untag()
+      }
+      PortMode::Trunk{ref vlans} => (debug_assert!(vlans.contains(&frame.get_vlan()))),
+      PortMode::VlanTunnel{service_vlan} => {
+       debug_assert!(service_vlan == frame.get_vlan()); //vlan should be checked before
+       frame.untag()
+      }
+      PortMode::Monitoring(_) => ()
      }
      frame
   }
@@ -348,6 +369,7 @@ impl InterfaceView<'_> {
     match &self.intf_ro_data.load().mode {
       PortMode::Access{vlan: port_vlan} => *port_vlan == vlan,
       PortMode::Trunk{vlans} => vlans.contains(&vlan),
+      PortMode::VlanTunnel{service_vlan} => *service_vlan == vlan,
       PortMode::Monitoring(_) => panic!("Unexpected path")
     }
   }
@@ -371,6 +393,7 @@ impl fmt::Display for InterfaceView<'_> {
       match ro_data.mode {
         PortMode::Access{..} => "Access",
         PortMode::Trunk{..} => "Trunk",
+        PortMode::VlanTunnel{..} => "Dot1q Tunnel",
         PortMode::Monitoring(_) => "Monitoring",
       }
     );
@@ -383,6 +406,9 @@ impl fmt::Display for InterfaceView<'_> {
     }
     if let PortMode::Monitoring(target) = &ro_data.mode {
       output += &format!("Monitoring: {}\n", target);
+    }
+    if let PortMode::VlanTunnel{service_vlan} = &ro_data.mode {
+      output += &format!("Vlan: {}\n", service_vlan);
     }
 
     output += &format!("Mode Debug: {}\n", self.debug_mode.load(Ordering::Relaxed));
@@ -399,6 +425,7 @@ impl fmt::Display for PortMode {
     match self {
       PortMode::Access{..} => "access",
       PortMode::Trunk{..} => "trunk",
+      PortMode::VlanTunnel{..} => "dot1q-tunnel",
       PortMode::Monitoring(_) => "monitoring",
     })
   }

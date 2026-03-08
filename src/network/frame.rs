@@ -37,7 +37,7 @@ impl Tag {
 pub struct Frame {
   pub dst_mac: MacAddr6,
   pub src_mac: MacAddr6,
-  tag: Option<Tag>,
+  tags: Vec<Tag>, //TODO replace with queue
   ether_type: u16,
   data: Vec<u8>,
 }
@@ -51,17 +51,23 @@ impl Frame {
     let src_mac = MacAddr6::new(bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11]);
     let mut ether_type = ((bytes[12] as u16) << 8) | bytes[13] as u16;
     let mut cursor = 14;
-    let mut tag = None;
+    let mut tags = Vec::new();
+    if let Some(aux_data) = aux_data { // offloaded outermost dot1q tag handling
+      tags.push(Tag::build_from_u16(aux_data.tp_vlan_tpid, aux_data.tp_vlan_tci));
+    }
+    while ether_type == 0x88a8 {
+      tags.push(Tag::parse(&bytes[cursor - 2..16]));
+      cursor += 4;
+      ether_type = ((bytes[cursor - 2] as u16) << 8) | bytes[cursor - 1] as u16;
+    }
     if ether_type == 0x8100 { // inline dot1q handling
-      tag = Some(Tag::parse(&bytes[12..16]));
-      ether_type = ((bytes[16] as u16) << 8) | bytes[17] as u16;
-      cursor = 18;
-    } else if let Some(aux_data) = aux_data { // offloaded dot1q handling
-      tag = Some(Tag::build_from_u16(aux_data.tp_vlan_tpid, aux_data.tp_vlan_tci));
+       tags.push(Tag::parse(&bytes[12..16]));
+       cursor += 4;
+       ether_type = ((bytes[cursor - 2] as u16) << 8) | bytes[cursor - 1] as u16;
     }
     let data = bytes[cursor..size].to_vec();
 
-    Frame{dst_mac: dst_mac, src_mac: src_mac, tag: tag, ether_type: ether_type, data: data}
+    Frame{dst_mac: dst_mac, src_mac: src_mac, tags: tags, ether_type: ether_type, data: data}
   }
 }
 
@@ -70,7 +76,7 @@ impl Frame {
     let mut bytes = Vec::new();
     bytes.extend(self.dst_mac.as_bytes());
     bytes.extend(self.src_mac.as_bytes());
-    if let Some(tag) = &self.tag {
+    for tag in &self.tags {
       bytes.push((tag.tpid >> 8) as u8);
       bytes.push(tag.tpid as u8);
       bytes.push((tag.tci >> 8) as u8);
@@ -87,6 +93,7 @@ impl Frame {
       0x0800 => "IPv4",
       0x0806 => "ARP",
       0x86dd => "IPv6",
+      0x88a8 => "QinQ",
       _ => "UNKNOWN",
     }
   }
@@ -97,16 +104,17 @@ impl Frame {
 
   pub fn tag(&mut self, vlan: u16) {
     debug_assert!(vlan < 4096);
-    self.tag = Some(Tag::build(0, false, vlan));
+    self.tags.insert(0, Tag::build(0, false, vlan));
   }
 
   pub fn untag(&mut self) {
-    self.tag = None
+    debug_assert!(!self.tags.is_empty());
+    self.tags.remove(0);
   }
 
   pub fn get_vlan(&self) -> u16 {
-    if let Some(tag) = &self.tag {
-      tag.tci & 0x1FFF
+    if !self.tags.is_empty() {
+      self.tags[0].tci & 0x1FFF
     } else {
       0
     }
@@ -116,8 +124,12 @@ impl Frame {
 impl fmt::Display for Frame {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let mut output = format!("Src MAC: {}, Dest MAC: {}, ", self.src_mac, self.dst_mac);
-    if let Some(tag) = &self.tag {
-      output += &format!("Tag: {}, ", tag);
+    if !self.tags.is_empty() {
+      output += &format!("Tags: {{");
+      for tag in &self.tags {
+        output += &format!("{}, ", tag);
+      }
+      output += &format!("}}, ");
     }
 
     let mut data_str = String::new();
