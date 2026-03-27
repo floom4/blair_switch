@@ -1,5 +1,6 @@
 use std::fmt;
 use std::option::Option;
+use std::collections::VecDeque;
 
 use macaddr::MacAddr6;
 
@@ -37,7 +38,7 @@ impl Tag {
 pub struct Frame {
   pub dst_mac: MacAddr6,
   pub src_mac: MacAddr6,
-  tags: Vec<Tag>, //TODO replace with queue
+  tags: VecDeque<Tag>, //TODO replace with queue
   ether_type: u16,
   data: Vec<u8>,
 }
@@ -51,17 +52,17 @@ impl Frame {
     let src_mac = MacAddr6::new(bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11]);
     let mut ether_type = ((bytes[12] as u16) << 8) | bytes[13] as u16;
     let mut cursor = 14;
-    let mut tags = Vec::new();
+    let mut tags = VecDeque::new();
     if let Some(aux_data) = aux_data { // offloaded outermost dot1q tag handling
-      tags.push(Tag::build_from_u16(aux_data.tp_vlan_tpid, aux_data.tp_vlan_tci));
+      tags.push_back(Tag::build_from_u16(aux_data.tp_vlan_tpid, aux_data.tp_vlan_tci));
     }
     while ether_type == 0x88a8 {
-      tags.push(Tag::parse(&bytes[cursor - 2..16]));
+      tags.push_back(Tag::parse(&bytes[cursor - 2..16]));
       cursor += 4;
       ether_type = ((bytes[cursor - 2] as u16) << 8) | bytes[cursor - 1] as u16;
     }
     if ether_type == 0x8100 { // inline dot1q handling
-       tags.push(Tag::parse(&bytes[12..16]));
+       tags.push_back(Tag::parse(&bytes[12..16]));
        cursor += 4;
        ether_type = ((bytes[cursor - 2] as u16) << 8) | bytes[cursor - 1] as u16;
     }
@@ -104,12 +105,12 @@ impl Frame {
 
   pub fn tag(&mut self, vlan: u16) {
     debug_assert!(vlan < 4096);
-    self.tags.insert(0, Tag::build(0, false, vlan));
+    self.tags.push_front(Tag::build(0, false, vlan));
   }
 
   pub fn untag(&mut self) {
     debug_assert!(!self.tags.is_empty());
-    self.tags.remove(0);
+    self.tags.pop_front();
   }
 
   pub fn get_vlan(&self) -> u16 {
