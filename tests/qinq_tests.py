@@ -77,11 +77,4 @@ send_frame(hosts[5], frame, vlan=33)
 for exp in exps:
   exp.receive()
 
-time.sleep(1)
-switch.send_cmds([
-  "show interfaces",
-  "show fib"
-])
-print(switch.read_output())
-
 switch.terminate()
