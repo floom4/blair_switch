@@ -12,6 +12,7 @@ use super::shell::CliMode;
 
 pub struct CommandHelper<'a> {
   pub mode: &'a ArcSwap<CliMode>,
+  pub intfs: Vec<&'a str>,
 }
 
 impl Completer for CommandHelper<'_> {
@@ -39,7 +40,12 @@ impl Completer for CommandHelper<'_> {
           continue 'main;
         }
       }
-      if cmd.pattern[tokens.len() - 1].starts_with(tokens[tokens.len() - 1]) {
+
+      if cmd.pattern[tokens.len() - 1] == "<intf>" {
+        for intf in &self.intfs {
+          _ = candidates.insert(intf.to_string());
+        }
+      } else if cmd.pattern[tokens.len() - 1].starts_with(tokens[tokens.len() - 1]) {
         _ = candidates.insert(cmd.pattern[tokens.len() - 1].to_string());
       }
     }

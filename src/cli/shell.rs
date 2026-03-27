@@ -36,7 +36,9 @@ pub fn cli_run(intfs_view: &IntfsViewMap, fib: &Arc<Fib>) {
   let mut rl = rustyline::Editor::new().unwrap();
   let mut mode = &ArcSwap::new(Arc::new(CliMode::General));
   let mut config = HashMap::new();
-  let helper= helper::CommandHelper{mode: mode};
+  let helper= helper::CommandHelper{
+    mode: mode,
+    intfs: intfs_view.keys().cloned().collect() };
   rl.set_helper(Some(helper));
 
   'main: loop {

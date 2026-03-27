@@ -249,7 +249,7 @@ pub const INTF_COMMANDS: &[Command] = &[
     }
   },
   Command {
-    pattern: &["switchport", "mode", "monitor", "<target_intf>"],
+    pattern: &["switchport", "mode", "monitor", "<intf>"],
     description: "Set interface in monitor mode to mirror traffic from target interfaces",
     handler: | intfs_view, _, _, intf, _, args | {
       let target = &args["target_intf"];
