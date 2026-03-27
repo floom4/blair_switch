@@ -4,7 +4,7 @@ import select
 import subprocess
 import time
 import textwrap
-from scapy.all import ARP, Ether, IP, ICMP, raw
+from scapy.all import ARP, Dot1Q, Ether, IP, ICMP, raw
 from inspect import cleandoc
 
 class Host:
