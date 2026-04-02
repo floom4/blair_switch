@@ -126,3 +126,11 @@ Supported Features
 | 802.1ak (MRVP) | |
 | 802.1d  (STP) | |
 
+
+Requirements
+============
+
+Current testing infrastructure uses [containerlab](https://containerlab.dev/).
+While it is recommended to install it to setup the test environment provided, it
+can be reproduced in other ways as long as expected docker containers with expected
+network topology are setup.

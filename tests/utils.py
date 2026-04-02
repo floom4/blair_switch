@@ -7,6 +7,8 @@ import textwrap
 from scapy.all import ARP, Dot1Q, Ether, IP, ICMP, raw
 from inspect import cleandoc
 
+container_prefix = "bs-lab"
+
 class Host:
   def __init__(self, name, iface, mac, ip):
     self.name = name
@@ -28,11 +30,11 @@ def run_cmd(cmd):
   subprocess.run(cmd, shell=True, check=True)
 
 def run_cmd_on_host(host, cmd):
-  run_cmd("sudo scripts/host-exec " + host + " " + cmd)
+  run_cmd(f"docker exec {container_prefix}-{host} {cmd}")
 
 class Switch:
   def __init__(self):
-    cmd = ["sudo", "scripts/host-exec", "sw", "target/debug/blair_switch" ]
+    cmd = ["docker", "exec", "-i", f"{container_prefix}-sw", "/app/blair_switch" ]
     for host in hosts[1:]:
       cmd.append(host.iface.split('-')[0] + "-sw")
     self.process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
@@ -44,7 +46,7 @@ class Switch:
   def send_cmds(self, cmds):
     for cmd in cmds:
       self.send_cmd(cmd)
-      time.sleep(0.15)
+      time.sleep(0.2)
 
   def read_output(self):
     timeout = 0.1
@@ -96,14 +98,14 @@ def send_frame(host, frame, vlan=None):
   if vlan:
     interface += f".{vlan}"
 
-  time.sleep(1) #Wait for all receiver to be setup
+  time.sleep(0.5) #Wait for all receiver to be setup
 
   script = cleandoc(f"""
     from scapy.all import sendp
     frame = bytes.fromhex("{data}")
     sendp(frame, iface="{interface}")
   """)
-  run_cmd_on_host(host.name, f"python3 - <<'PY'\n{script}\nPY")
+  run_cmd_on_host(host.name, f"python3 -c \'{script}\'")
 
 def expect_frame(host, frame, timeout = 5, failure=False, vlan=None):
   expected_bytes = raw(frame).hex()
@@ -114,6 +116,7 @@ def expect_frame(host, frame, timeout = 5, failure=False, vlan=None):
   script = cleandoc(f"""
     from scapy.all import sniff
     import sys, binascii
+
     exp = binascii.unhexlify("{expected_bytes}")
     frames = sniff(iface="{interface}", timeout={timeout},
       stop_filter=lambda frame : bytes(frame) == exp, count=0)
@@ -127,6 +130,6 @@ def expect_frame(host, frame, timeout = 5, failure=False, vlan=None):
     sys.exit(0)
   """)
   p = subprocess.Popen(
-      f"sudo scripts/host-exec {host.name} python3 - << 'PY'\n{script}\nPY",
+      f"docker exec -i {container_prefix}-{host.name} python3 -c \'{script}\'",
       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
   return Receiver(host, vlan, expected_bytes, failure, p)

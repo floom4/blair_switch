@@ -1,0 +1,85 @@
+name: bs-lab
+prefix: "__lab-name"
+
+#mgmt:
+#  network: none
+
+topology:
+  groups:
+    hosts:
+      kind: linux
+      image: nicolaka/netshoot
+      exec:
+        - sysctl -w net.ipv6.conf.all.disable_ipv6=1
+  nodes:
+    sw:
+      kind: linux
+      image: debian:bookworm-slim
+      binds:
+        - ./target/debug:/app
+      cap-add:
+        - NET_ADMIN
+        - NET_RAW
+      exec:
+        - sh -c "echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6"
+    host1:
+      group: hosts
+      exec:
+        - ip addr add 192.168.10.11/24 dev if1-host1
+    host2:
+      group: hosts
+      exec:
+        - ip addr add 192.168.10.12/24 dev if2-host2
+    host3:
+      group: hosts
+      exec:
+        - ip addr add 192.168.10.13/24 dev if3-host3
+    host4:
+      group: hosts
+      exec:
+        - ip addr add 192.168.10.14/24 dev if4-host4
+    host5:
+      group: hosts
+      exec:
+        - ip link add name if5-host5.42 link if5-host5 type vlan id 42
+        - ip link add name if5-host5.33 link if5-host5 type vlan id 33
+        - ip addr add 192.168.11.42/24 dev if5-host5.42
+        - ip addr add 192.168.10.33/24 dev if5-host5.33
+        - ip link set if5-host5.42 up
+        - ip link set if5-host5.33 up
+  links:
+    - type: veth
+      endpoints:
+        - node: sw
+          interface: if1-sw
+        - node: host1
+          interface: if1-host1
+          mac: aa:aa:aa:aa:aa:aa
+    - type: veth
+      endpoints:
+        - node: sw
+          interface: if2-sw
+        - node: host2
+          interface: if2-host2
+          mac: aa:aa:aa:aa:aa:bb
+    - type: veth
+      endpoints:
+        - node: sw
+          interface: if3-sw
+        - node: host3
+          interface: if3-host3
+          mac: aa:aa:aa:aa:aa:cc
+    - type: veth
+      endpoints:
+        - node: sw
+          interface: if4-sw
+        - node: host4
+          interface: if4-host4
+          mac: aa:aa:aa:aa:aa:dd
+    - type: veth
+      endpoints:
+        - node: sw
+          interface: if5-sw
+        - node: host5
+          interface: if5-host5
+          mac: aa:aa:aa:aa:aa:ee
