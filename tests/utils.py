@@ -1,5 +1,4 @@
-#!/usr/bin/python3
-
+import pytest
 import select
 import subprocess
 import time
@@ -25,6 +24,15 @@ hosts = [
   Host("host5", "if5-host5", "aa:aa:aa:aa:aa:ee", "192.168.10.15"),
 ]
 
+@pytest.fixture(scope="module")
+def ctx():
+  switch = Switch()
+  
+  yield {
+    "switch": switch
+  }
+
+  switch.terminate()
 
 def run_cmd(cmd):
   subprocess.run(cmd, shell=True, check=True)
