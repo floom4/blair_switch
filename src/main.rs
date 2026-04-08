@@ -15,6 +15,8 @@ fn main() {
       process::exit(0);
 		}
 
-    let mut switch = Switch::build(&args[1..]);
-    switch.start()
+    match Switch::build(&args[1..]) {
+      Ok(mut switch) => switch.start(),
+      Err(_) => process::exit(1),
+    }
 }

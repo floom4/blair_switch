@@ -85,15 +85,15 @@ pub struct Interface<'a> {
 }
 
 impl Interface<'_> {
-  pub fn init(name: &str, tx: Sender<IntfCmd>) -> Interface {
-    let if_index = get_if_index(name).unwrap();
+  pub fn init(name: &str, tx: Sender<IntfCmd>) -> io::Result<Interface> {
+    let if_index = get_if_index(name)?;
     let intf_view = InterfaceView{ name: name.to_string(), tx: tx,
       in_pkts: AtomicU64::new(0), out_pkts: AtomicU64::new(0),
       in_bytes: AtomicU64::new(0), out_bytes: AtomicU64::new(0),
       debug_mode: AtomicBool::new(false),
       intf_ro_data: ArcSwap::from_pointee(InterfaceRoData{ fd: None, mode: PortMode::Access{vlan: 1 }})
     };
-    Interface{name: name.to_string(), if_index: if_index, fd: None, view: Arc::new(intf_view)}
+    Ok(Interface{name: name.to_string(), if_index: if_index, fd: None, view: Arc::new(intf_view)})
   }
 
   pub fn open(&mut self) -> io::Result<()> {
@@ -379,7 +379,9 @@ fn get_if_index(if_name: &str) -> io::Result<u32> {
     let c_name = CString::new(if_name)?;
     let index = unsafe { if_nametoindex(c_name.as_ptr()) };
     if index == 0 {
-      return Err(io::Error::last_os_error());
+      let err = Err(io::Error::last_os_error());
+      eprintln!("Could not find interface {}", if_name);
+      return err
     }
     Ok(index)
 }

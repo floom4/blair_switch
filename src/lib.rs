@@ -1,3 +1,4 @@
+use std::io;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::{thread, time};
@@ -22,7 +23,7 @@ pub struct Switch<'a> {
 }
 
 impl Switch<'_> {
-  pub fn build(interfaces_name: &[String]) -> Switch {
+  pub fn build(interfaces_name: &[String]) -> io::Result<Switch> {
     let mut switch = Switch{ interfaces: Vec::new(),
       intfs_view: HashMap::new(),
       intfs_rx: HashMap::new(),
@@ -31,7 +32,7 @@ impl Switch<'_> {
     };
     for name in interfaces_name {
       let (tx, rx) = unbounded::<IntfCmd>();
-      let mut intf = Interface::init(name, tx);
+      let mut intf = Interface::init(name, tx)?;
       if let Err(err) = intf.open() {
         eprintln!("Error: {}", err);
       }
@@ -40,7 +41,7 @@ impl Switch<'_> {
       switch.interfaces.push(intf);
       switch.mirrors.insert(name.clone(), Vec::new());
     }
-    switch
+    Ok(switch)
   }
 
   pub fn start(&mut self) {
