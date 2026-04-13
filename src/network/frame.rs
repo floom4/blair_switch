@@ -38,7 +38,7 @@ impl Tag {
 pub struct Frame {
   pub dst_mac: MacAddr6,
   pub src_mac: MacAddr6,
-  tags: VecDeque<Tag>, //TODO replace with queue
+  tags: VecDeque<Tag>,
   ether_type: u16,
   data: Vec<u8>,
 }
@@ -119,6 +119,11 @@ impl Frame {
     } else {
       0
     }
+  }
+
+  pub fn update_vlan(&mut self, new_vlan: u16) {
+    debug_assert!(!self.tags.is_empty());
+    self.tags[0].tci = (self.tags[0].tci & 0xf000) + new_vlan;
   }
 }
 

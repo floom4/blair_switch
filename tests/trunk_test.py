@@ -19,8 +19,6 @@ class TestTrunk:
       "switchport access vlan 42",
       "exit"
     ])
-    time.sleep(1)
-
     print("\nTest ingress trunk Vlan 33")
 
     frame = Ether(src=hosts[5].mac, dst="ff:ff:ff:ff:ff:ff")/ARP(hwsrc=hosts[5].mac, hwdst="00:00:00:00:00:00", pdst=hosts[1].ip, psrc=hosts[5].ip)

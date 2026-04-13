@@ -55,6 +55,7 @@ class Switch:
     for cmd in cmds:
       self.send_cmd(cmd)
       time.sleep(0.2)
+    time.sleep(0.3)
 
   def read_output(self):
     timeout = 0.1
@@ -92,7 +93,7 @@ class Receiver:
     self.process.wait()
     ok = self.process.returncode == 0
     if ok == self.failure:
-      print(f"{self.host.iface}@{self.host.name} FAILURE")
+      print(f"{self.interface}@{self.host.name} FAILURE")
       print("Return Code: ", self.process.returncode)
       stdout, stderr = self.process.communicate()
       print("==== STDOUT =====\n", stdout)

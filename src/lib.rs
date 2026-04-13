@@ -105,8 +105,16 @@ pub fn run_interface_worker<'a>(mut ing_intf: Interface<'a>, rx: Receiver<IntfCm
       Ok(IntfCmd::PortModeMonitoring(target)) => {
         // Remove eventual previous monitoring session
         remove_monitoring_session(&ing_intf, &mirrors);
-
         add_monitoring_session(&ing_intf, &target, &mirrors);
+      },
+      Ok(IntfCmd::PortAddVlanTranslation(vlan, new_vlan)) => {
+        ing_intf.add_vlan_translation(vlan, new_vlan);
+      }
+      Ok(IntfCmd::PortRemoveVlanTranslation(vlan, new_vlan)) => {
+        ing_intf.remove_vlan_translation(vlan, new_vlan);
+      }
+      Ok(IntfCmd::PortRemoveAllVlanTranslations) => {
+        ing_intf.remove_all_vlan_translations();
       },
       Err(crossbeam_channel::TryRecvError::Empty) => (),
       Err(err) => eprintln!("Error: {}", err),
@@ -128,7 +136,7 @@ pub fn run_interface_worker<'a>(mut ing_intf: Interface<'a>, rx: Receiver<IntfCm
           if !frame.is_broadcast() &&
             let Some(egr_intf) = fib.lookup(frame.get_vlan(), &frame.dst_mac) &&
             egr_intf.is_up() && !egr_intf.is_monitoring() &&
-            egr_intf.allows_vlan(frame.get_vlan()) {
+            egr_intf.allows_vlan_in(frame.get_vlan()) {
             // Unicast
             egr_process_and_send(&egr_intf, &frame, mirrors);
           } else {
@@ -151,7 +159,7 @@ pub fn flood(intfs: &HashMap<&str, Arc<InterfaceView>>, frame: &Frame,
   mirrors: &DashMap<String, Vec<Arc<InterfaceView>>>) {
 
   for (_, intf) in intfs {
-    if intf.is_up() && !intf.is_monitoring() && intf.allows_vlan(frame.get_vlan()) {
+    if intf.is_up() && !intf.is_monitoring() && intf.allows_vlan_out(frame.get_vlan()) {
       egr_process_and_send(intf, &frame, mirrors);
     }
   }

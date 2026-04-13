@@ -1,5 +1,5 @@
 use std::{ffi, fmt, io, mem};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, BorrowedFd};
 use std::ptr;
@@ -48,13 +48,16 @@ pub enum IntfCmd {
   PortAccessVlan(u16),
   PortTrunkAddVlans(Vec<u16>),
   PortTrunkRemoveVlans(Vec<u16>),
+  PortAddVlanTranslation(u16, u16),
+  PortRemoveVlanTranslation(u16, u16),
+  PortRemoveAllVlanTranslations,
 }
 
 #[derive(Debug,Clone)]
 pub enum PortMode {
   Access { vlan: u16 },
   VlanTunnel { service_vlan: u16 },
-  Trunk { vlans: HashSet<u16>},
+  Trunk { vlans: HashSet<u16>, vlan_translations: (HashMap<u16, u16>, HashMap<u16,u16>)},
   Monitoring(String),
 }
 
@@ -208,13 +211,15 @@ impl Interface<'_> {
         }
         frame.tag(vlan);
       },
-      PortMode::Trunk{ref vlans} => {
+      PortMode::Trunk{ref vlans, ref vlan_translations} => {
         let vlan = frame.get_vlan();
         if vlan == 0 {
           if self.view.debug_mode.load(Ordering::Relaxed) {
             println!("Dropping untagged frame ingressing on trunk port");
           }
           return None; // Drop untagged & bad vlan frame
+        } else if let Some(new_vlan) = vlan_translations.0.get(&vlan) {
+          frame.update_vlan(*new_vlan)
         } else if !vlans.contains(&vlan) {
           if self.view.debug_mode.load(Ordering::Relaxed) {
             println!("Dropping frame taggued {} ingressing on trunk port allowing {:?}", vlan, vlans);
@@ -263,14 +268,14 @@ impl Interface<'_> {
 
   pub fn set_port_mode_trunk_vlan(&self) {
     let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
-    intf_ro_data.mode = PortMode::Trunk{vlans: HashSet::new()};
+    intf_ro_data.mode = PortMode::Trunk{vlans: HashSet::new(), vlan_translations: (HashMap::new(), HashMap::new())};
     self.view.intf_ro_data.store(Arc::new(intf_ro_data));
   }
 
   pub fn add_trunk_allowed_vlan(&self, vlans: &Vec<u16>) {
-    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
     debug_assert!(vlans.into_iter().all(| x | *x > 0 && *x < 4096));
-    if let PortMode::Trunk{vlans: ref mut allowed_vlans} = intf_ro_data.mode  {
+    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
+    if let PortMode::Trunk{vlans: ref mut allowed_vlans, ..} = intf_ro_data.mode  {
       for vlan in vlans {
         allowed_vlans.insert(*vlan);
       }
@@ -281,12 +286,47 @@ impl Interface<'_> {
   }
 
   pub fn remove_trunk_allowed_vlan(&self, vlans: &Vec<u16>) {
-    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
     debug_assert!(vlans.into_iter().all(| x | *x > 0 && *x < 4096));
-    if let PortMode::Trunk{vlans: ref mut allowed_vlans} = intf_ro_data.mode  {
+    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
+    if let PortMode::Trunk{vlans: ref mut allowed_vlans, ..} = intf_ro_data.mode  {
       for vlan in vlans {
         allowed_vlans.remove(vlan);
       }
+      self.view.intf_ro_data.store(Arc::new(intf_ro_data));
+    } else {
+      debug_assert!(false);
+    }
+  }
+
+  pub fn add_vlan_translation(&self, in_vlan: u16, new_vlan: u16) {
+    debug_assert!(vec![in_vlan, new_vlan].into_iter().all(| x | x > 0 && x < 4096));
+    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
+    if let PortMode::Trunk{ref mut vlan_translations, ..} = intf_ro_data.mode  {
+      vlan_translations.0.insert(in_vlan, new_vlan);
+      vlan_translations.1.insert(new_vlan, in_vlan);
+      self.view.intf_ro_data.store(Arc::new(intf_ro_data));
+    } else {
+      debug_assert!(false);
+    }
+  }
+
+  pub fn remove_vlan_translation(&self, in_vlan: u16, new_vlan: u16) {
+    debug_assert!(vec![in_vlan, new_vlan].into_iter().all(| x | x > 0 && x < 4096));
+    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
+    if let PortMode::Trunk{ref mut vlan_translations, ..} = intf_ro_data.mode  {
+      vlan_translations.0.remove(&in_vlan);
+      vlan_translations.1.remove(&new_vlan);
+      self.view.intf_ro_data.store(Arc::new(intf_ro_data));
+    } else {
+      debug_assert!(false);
+    }
+  }
+
+  pub fn remove_all_vlan_translations(&self) {
+    let mut intf_ro_data = self.view.intf_ro_data.load().as_ref().clone();
+    if let PortMode::Trunk{ref mut vlan_translations, ..} = intf_ro_data.mode  {
+      vlan_translations.0.clear();
+      vlan_translations.1.clear();
       self.view.intf_ro_data.store(Arc::new(intf_ro_data));
     } else {
       debug_assert!(false);
@@ -326,7 +366,12 @@ impl InterfaceView<'_> {
        debug_assert!(vlan == frame.get_vlan()); //vlan should be checked before
        frame.untag()
       }
-      PortMode::Trunk{ref vlans} => (debug_assert!(vlans.contains(&frame.get_vlan()))),
+      PortMode::Trunk{ref vlans, ref vlan_translations} => {
+        debug_assert!(vlans.contains(&frame.get_vlan()) || vlan_translations.1.contains_key(&frame.get_vlan()));
+        if let Some(new_vlan) = vlan_translations.1.get(&frame.get_vlan()) {
+          frame.update_vlan(*new_vlan)
+        }
+      },
       PortMode::VlanTunnel{service_vlan} => {
        debug_assert!(service_vlan == frame.get_vlan()); //vlan should be checked before
        frame.untag()
@@ -365,10 +410,19 @@ impl InterfaceView<'_> {
     }
   }
 
-  pub fn allows_vlan(&self, vlan: u16) -> bool {
+  pub fn allows_vlan_in(&self, vlan: u16) -> bool {
     match &self.intf_ro_data.load().mode {
       PortMode::Access{vlan: port_vlan} => *port_vlan == vlan,
-      PortMode::Trunk{vlans} => vlans.contains(&vlan),
+      PortMode::Trunk{vlans, vlan_translations} => vlans.contains(&vlan) || vlan_translations.0.contains_key(&vlan),
+      PortMode::VlanTunnel{service_vlan} => *service_vlan == vlan,
+      PortMode::Monitoring(_) => panic!("Unexpected path")
+    }
+  }
+
+  pub fn allows_vlan_out(&self, vlan: u16) -> bool {
+    match &self.intf_ro_data.load().mode {
+      PortMode::Access{vlan: port_vlan} => *port_vlan == vlan,
+      PortMode::Trunk{vlans, vlan_translations} => vlans.contains(&vlan) || vlan_translations.1.contains_key(&vlan),
       PortMode::VlanTunnel{service_vlan} => *service_vlan == vlan,
       PortMode::Monitoring(_) => panic!("Unexpected path")
     }
@@ -403,8 +457,16 @@ impl fmt::Display for InterfaceView<'_> {
     if let PortMode::Access{vlan} = &ro_data.mode {
       output += &format!("Vlan: {}\n", vlan);
     }
-    if let PortMode::Trunk{vlans} = &ro_data.mode {
-      output += &format!("Allowed Vlans: {:?}\n", vlans);
+    if let PortMode::Trunk{vlans, vlan_translations} = &ro_data.mode {
+      output += &format!("Allowed Vlans: {:?}\nVlan Translations: \n\tIngress: ", vlans);
+      for in_vlan in vlan_translations.0.keys() {
+        output += &format!("{} -> {}, ", in_vlan, vlan_translations.0[in_vlan]);
+      }
+      output += &format!("\n\tEgress: ");
+      for egr_vlan in vlan_translations.1.keys() {
+        output += &format!("{} -> {}, ", egr_vlan, vlan_translations.1[egr_vlan]);
+      }
+      output += &format!("\n");
     }
     if let PortMode::Monitoring(target) = &ro_data.mode {
       output += &format!("Monitoring: {}\n", target);

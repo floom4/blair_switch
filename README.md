@@ -104,6 +104,9 @@ Interface mod
 | switchport trunk vlans remove {vlans} | Remove allowed vlans for interface |
 | switchport mode dot1q-tunnel | Set interface in Vlan tunnel mode |
 | no switchport trunk vlans | Remove all allowed vlans for interface |
+| switchport vlan translation <in_vlan> <new_vlan> | Add vlan mapping for interface translating <in_vlan> to <new_vlan> |
+| no switchport vlan translation <in_vlan> <new_vlan> | Remove vlan mapping from interface |
+| no switchport vlan translation | Remove all vlan mappings from interface |
 | switchport mode monitor {if\_name}| Configure interface to mirror egress on given port |
 | no switchport access vlan | Revert access port vlan to default (1) |
 | help | Display available commands |
@@ -118,7 +121,7 @@ Supported Features
 | Frame switching | X |
 | Basic Port mirroring | X |
 | Advanced Port mirroring | |
-| Vlan mapping | |
+| Vlan mapping | X |
 | 802.1q (Vlan) | X |
 | 802.1ad (QinQ) | X |
 | 802.1ab (LLDP) | |
