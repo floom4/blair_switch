@@ -12,6 +12,5 @@ TODO
 - Use epoll for control plane/data plane reading
 - Improve binary args handling
 - Move interface mode related code into their own file
-- Fix auto-complete on interface name with some characters
 - Add uni-directional vlan mapping
 - Add config commands support

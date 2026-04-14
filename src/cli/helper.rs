@@ -43,7 +43,9 @@ impl Completer for CommandHelper<'_> {
 
       if cmd.pattern[tokens.len() - 1] == "<intf>" {
         for intf in &self.intfs {
-          _ = candidates.insert(intf.to_string());
+          if intf.starts_with(tokens[tokens.len() - 1]) {
+            _ = candidates.insert(intf.to_string());
+          }
         }
       } else if cmd.pattern[tokens.len() - 1].starts_with(tokens[tokens.len() - 1]) {
         _ = candidates.insert(cmd.pattern[tokens.len() - 1].to_string());
