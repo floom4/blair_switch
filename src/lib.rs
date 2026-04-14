@@ -73,33 +73,44 @@ pub fn run_interface_worker<'a>(mut ing_intf: Interface<'a>, rx: Receiver<IntfCm
     // Control plane
     match rx.try_recv() {
       // TODO Delete intf_view from collection on shutdown
-      Ok(IntfCmd::Shutdown) => ing_intf.close(),
+      Ok(IntfCmd::Shutdown) => {
+        ing_intf.close();
+        fib.remove_intf_entries(ing_intf.name.clone());
+      },
       Ok(IntfCmd::NoShutdown) => {
         if let Err(err) = ing_intf.open() {
           eprintln!("Error: {}", err)
         }
       },
       Ok(IntfCmd::PortAccessVlan(vlan)) => {
-          ing_intf.set_port_mode_access_vlan(vlan)
-        },
+        ing_intf.set_port_mode_access_vlan(vlan);
+        fib.remove_intf_entries(ing_intf.name.clone());
+      },
       Ok(IntfCmd::PortModeAccess) => {
         remove_monitoring_session(&ing_intf, &mirrors);
-        ing_intf.set_port_mode_access_vlan(DEFAULT_VLAN)
+        ing_intf.set_port_mode_access_vlan(DEFAULT_VLAN);
+        fib.remove_intf_entries(ing_intf.name.clone());
       },
       Ok(IntfCmd::PortModeVlanTunnel) => {
-        ing_intf.set_port_mode_vlan_tunnel(DEFAULT_VLAN)
+        ing_intf.set_port_mode_vlan_tunnel(DEFAULT_VLAN);
+        fib.remove_intf_entries(ing_intf.name.clone());
       },
       Ok(IntfCmd::PortModeVlanTunnelSetVlan(vlan)) => {
-        ing_intf.set_port_mode_vlan_tunnel(vlan)
+        ing_intf.set_port_mode_vlan_tunnel(vlan);
+        fib.remove_intf_entries(ing_intf.name.clone());
       },
       Ok(IntfCmd::PortModeTrunk) => {
-        ing_intf.set_port_mode_trunk_vlan()
+        ing_intf.set_port_mode_trunk_vlan();
+        fib.remove_intf_entries(ing_intf.name.clone());
       },
       Ok(IntfCmd::PortTrunkAddVlans(vlans)) => {
         ing_intf.add_trunk_allowed_vlan(&vlans);
       },
       Ok(IntfCmd::PortTrunkRemoveVlans(vlans)) => {
         ing_intf.remove_trunk_allowed_vlan(&vlans);
+        for vlan in vlans {
+          fib.remove_intf_vlan_entries(ing_intf.name.clone(), vlan);
+        }
       },
       // TODO Delete intf_view from collection on monitoring
       Ok(IntfCmd::PortModeMonitoring(target)) => {
@@ -112,9 +123,11 @@ pub fn run_interface_worker<'a>(mut ing_intf: Interface<'a>, rx: Receiver<IntfCm
       }
       Ok(IntfCmd::PortRemoveVlanTranslation(vlan, new_vlan)) => {
         ing_intf.remove_vlan_translation(vlan, new_vlan);
+        fib.remove_intf_vlan_entries(ing_intf.name.clone(), new_vlan);
       }
       Ok(IntfCmd::PortRemoveAllVlanTranslations) => {
         ing_intf.remove_all_vlan_translations();
+        fib.remove_intf_entries(ing_intf.name.clone());
       },
       Err(crossbeam_channel::TryRecvError::Empty) => (),
       Err(err) => eprintln!("Error: {}", err),
